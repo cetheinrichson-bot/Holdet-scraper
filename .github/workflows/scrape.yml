@@ -2,7 +2,7 @@ name: Scrape Holdet Statistics
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '0 * * * *'  # kør hver hele time
   workflow_dispatch: {}
 
 jobs:
@@ -12,22 +12,27 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
       - name: Install deps
-        run: npm ci
+        run: npm install
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
+
       - name: Run scraper
         run: npm run scrape
+
       - name: Commit data if changed
         run: |
           if [ -f data/changed.flag ] && [ "$(cat data/changed.flag)" = "1" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add data/latest.json data/changed.flag
-            git commit -m "Update latest.json [skip ci]" || echo "No changes"
+            git commit -m "Update latest.json [skip ci]" || echo "No changes to commit"
             git push
           else
             echo "No data changes."
