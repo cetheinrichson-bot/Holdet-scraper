@@ -1,9 +1,12 @@
-// Scraper – robust mod RSC/iframes:
-// 1) Accepterer cookies
-// 2) Klikker det rigtige "Statistik"-menupunkt (undgår cookieboks)
-// 3) Lytter på alle network responses (RSC/json) OG trawler performance-entries
-// 4) Henter kandidater direkte med page.request.get() og parser { fullName, growth }
-// 5) Gemmer data i data/latest.json + debug_info.txt (så vi kan se, hvad der skete)
+// Scraper – bred netværkslytning (RSC/JSON/tekst), samler alle tekstlige svar,
+// finder dem der indeholder spillerdata, og gemmer latest.json + debug + samples.
+//
+// Flow:
+//  - Gå til landing → acceptér cookies → klik "Statistik"
+//  - Lyt på ALLE responses (text/x-component, application/json, text/*, application/javascript)
+//  - For hvert svar: læs .text() og se om det indeholder "growth" eller "fullName"
+//  - Gem første match(e) som samples og parse samlet tekst til [{ fullName, growth }]
+//  - Commit via workflow-step (hvis changed.flag=1)
 
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -13,13 +16,16 @@ const START_URL = 'https://www.holdet.dk/da/fantasy/super-manager-spring-2026';
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
 
-function ensureOutDir() {
-  const outDir = path.join('data');
-  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-  return outDir;
+// ============= FS helpers =============
+function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
+function ensureDataDirs() {
+  const dataDir = path.join('data');
+  const sampDir = path.join(dataDir, 'samples');
+  ensureDir(dataDir); ensureDir(sampDir);
+  return { dataDir, sampDir };
 }
 
-// --- Parser for tekst der indeholder spillerobjekter ---
+// ============= Parsing =============
 function extractPlayersFromText(s) {
   const out = [];
   const push = (n, g) => {
@@ -34,20 +40,20 @@ function extractPlayersFromText(s) {
   // growth ... person.fullName
   const reB = /"growth"\s*:\s*(-?\d+)[\s\S]{1,2000}?"person"\s*:\s*\{[^}]*?"fullName"\s*:\s*"([^"]+)"/g;
   while ((m = reB.exec(s)) !== null) push(m[2], m[1]);
-  // fullName (på roden) ... growth
+  // fullName ... growth
   const reC = /"fullName"\s*:\s*"([^"]+)"[\s\S]{1,2000}?"growth"\s*:\s*(-?\d+)/g;
   while ((m = reC.exec(s)) !== null) push(m[1], m[2]);
 
-  // dedupe på navn
+  // Dedupe på navn
   const seen = new Map();
   for (const p of out) {
-    const key = p.fullName.toLowerCase();
-    if (!seen.has(key)) seen.set(key, p);
+    const k = p.fullName.toLowerCase();
+    if (!seen.has(k)) seen.set(k, p);
   }
   return Array.from(seen.values());
 }
 
-// --- Cookiebot: acceptér hvis dialogen er synlig ---
+// ============= Cookiebot + navigation =============
 async function acceptCookiesIfPresent(page) {
   await page.waitForTimeout(800);
   const ids = [
@@ -73,21 +79,13 @@ async function acceptCookiesIfPresent(page) {
   }
 }
 
-// --- Klik på menulink "Statistik" (undgå cookieboksen) ---
 async function clickStatisticsMenu(page) {
-  // 1) Link i header der peger mod /statistics
   const headerStat = page.locator('header a[href*="/statistics"]').first();
-  if (await headerStat.isVisible().catch(() => false)) {
-    await headerStat.click({ timeout: 12000 });
-    return;
-  }
-  // 2) Link i header med tekst "Statistik"
+  if (await headerStat.isVisible().catch(() => false)) { await headerStat.click({ timeout: 12000 }); return; }
+
   const headerText = page.locator('header').getByRole('link', { name: /Statistik/i }).first();
-  if (await headerText.isVisible().catch(() => false)) {
-    await headerText.click({ timeout: 12000 });
-    return;
-  }
-  // 3) Generelt link med “Statistik” (uden for cookie-dialogen)
+  if (await headerText.isVisible().catch(() => false)) { await headerText.click({ timeout: 12000 }); return; }
+
   const links = page.getByRole('link', { name: /Statistik/i });
   const count = await links.count();
   for (let i = 0; i < count; i++) {
@@ -99,107 +97,83 @@ async function clickStatisticsMenu(page) {
     await link.click({ timeout: 12000 }).catch(() => {});
     return;
   }
-  // 4) Fallback: klik på et <a href*="/statistics"> hvor som helst
   const direct = await page.$('a[href*="/statistics"]');
   if (direct) await direct.click({ timeout: 12000 }).catch(() => {});
 }
 
-// --- Hjælp: hent tekst fra en kandidat-URL robust ---
-async function fetchText(page, url) {
-  // Resolve relative → absolut
-  let abs;
-  try { abs = new URL(url, page.url()).toString(); } catch { abs = url; }
-  const resp = await page.request.get(abs, {
-    headers: { 'Accept': '*/*', 'Referer': START_URL, 'User-Agent': UA }
-  });
-  if (!resp.ok()) return '';
-  return await resp.text();
-}
-
+// ============= Main run =============
 async function run() {
-  const outDir = ensureOutDir();
+  const { dataDir, sampDir } = ensureDataDirs();
 
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({ userAgent: UA });
   const page = await ctx.newPage();
 
-  // Saml kandidater fra network + performance
+  // Saml kandidater fra alle tekstlige responses
   const candidateUrls = new Set();
-  const snapshots = { responses: [], perf: [] };
+  const responseLog = [];
+  const textChunks = [];         // tekster hvor vi fandt "growth"/"fullName"
+  const sampledTexts = [];       // gem op til 2 prøvefiler
 
-  // Lyt på ALLE responses og saml dem, der ligner statistik-data
+  // For at undgå at læse ALT for store svar, sæt en upper bound (bytes)
+  const MAX_BYTES_READ = 1_000_000; // 1 MB pr. response
+  let inspected = 0;
+
   page.on('response', async (resp) => {
     try {
       const url = resp.url() || '';
-      if (!/statistics/i.test(url)) return;
+      const status = resp.status();
       const headers = resp.headers() || {};
       const ct = (headers['content-type'] || headers['Content-Type'] || '').toLowerCase();
-      if (ct.includes('text/x-component') || ct.includes('json')) {
+
+      // Kun tekstlige typer (RSC, JSON, HTML, tekst, JS)
+      const isTextual = /(text\/|json|x-component|javascript)/.test(ct);
+      if (!isTextual) return;
+
+      // Læs body som tekst (bounded)
+      let txt = '';
+      try {
+        // Playwright returnerer hele teksten – vi begrænser efterfølgende ved slice
+        txt = await resp.text();
+        if (txt && txt.length > MAX_BYTES_READ) txt = txt.slice(0, MAX_BYTES_READ);
+      } catch { /* ignore */ }
+
+      responseLog.push({ url, status, ct, len: txt ? txt.length : 0 });
+
+      // Hvis teksten indholder "growth" eller "fullName", gem som kandidat
+      if (txt && (/"growth"\s*:\s*-?\d+/.test(txt) || /"fullName"\s*:\s*"/.test(txt))) {
         candidateUrls.add(url);
-        snapshots.responses.push({ url, ct, status: resp.status() });
+        textChunks.push(txt);
+
+        // Gem op til 2 samples til inspektion
+        if (sampledTexts.length < 2) {
+          const idx = sampledTexts.length + 1;
+          const p = path.join(sampDir, `match_${idx}.txt`);
+          fs.writeFileSync(p, txt.slice(0, 100000)); // max 100 KB per sample
+          sampledTexts.push(p);
+        }
       }
-    } catch {}
+
+      // Hold øje med ikke at inspicere uendeligt mange responses
+      inspected++;
+    } catch { /* ignore */ }
   });
 
-  // 1) Gå til landing og accepter cookies
+  // Navigér og klik statistik
   await page.goto(START_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await acceptCookiesIfPresent(page);
-
-  // 2) Klik "Statistik"
   await clickStatisticsMenu(page);
 
-  // 3) Giv appen lidt tid til at fyre RSC/Fetch requests af
-  await page.waitForTimeout(3000);
+  // Giv appen lidt tid til at skyde netværkskald af
+  await page.waitForTimeout(5000);
 
-  // 4) Supplér kandidater ved at trawle performance entries (ressourcenavne i browseren)
-  try {
-    const perf = await page.evaluate(() =>
-      performance.getEntries().map(e => typeof e.name === 'string' ? e.name : '')
-    );
-    (perf || []).forEach(n => {
-      if (/statistics/i.test(n) && (n.includes('_rsc=') || n.includes('data='))) candidateUrls.add(n);
-    });
-    snapshots.perf = (perf || []).filter(n => /statistics/i.test(n));
-  } catch {}
-
-  // 5) Hent alle kandidat-URL’er direkte og parse dem
-  const chunks = [];
-  for (const u of candidateUrls) {
-    try {
-      const txt = await fetchText(page, u);
-      if (/"growth":-?\d+/.test(txt)) chunks.push(txt);
-    } catch {}
-  }
-
-  // 6) Fallbacks (hvis ingen kandidater gav data):
-  if (chunks.length === 0) {
-    // a) Prøv alle frames (hent frame.url() direkte)
-    const frames = page.frames();
-    for (const f of frames) {
-      const fu = (f.url() || '').toString();
-      if (/statistics/i.test(fu)) {
-        try {
-          const txt = await fetchText(page, fu);
-          if (/"growth":-?\d+/.test(txt)) { chunks.push(txt); break; }
-        } catch {}
-      }
-    }
-    // b) Prøv hele side-HTML
-    if (chunks.length === 0) {
-      try {
-        const html = await page.content();
-        if (/"growth":-?\d+/.test(html)) chunks.push(html);
-      } catch {}
-    }
-  }
-
-  // 7) Merge og parse
-  const merged = chunks.join('\n');
+  // Merge alle chunks og parse spillere
+  const merged = textChunks.join('\n');
   const players = merged ? extractPlayersFromText(merged) : [];
 
-  // 8) Skriv filer
-  const latestPath = path.join(outDir, 'latest.json');
-  const debugPath  = path.join(outDir, 'debug_info.txt');
+  // Skriv outputfiler
+  const latestPath = path.join(dataDir, 'latest.json');
+  const debugPath  = path.join(dataDir, 'debug_info.txt');
 
   const payload = JSON.stringify(players, null, 2);
   let changed = true;
@@ -209,16 +183,18 @@ async function run() {
   }
   fs.writeFileSync(latestPath, payload);
 
-  const debug = [
+  const debugLines = [
     `foundPlayers=${players.length}`,
-    `candidates=${Array.from(candidateUrls).length}`,
-    `responseCandidates=${snapshots.responses.length}`,
-    `perfCandidates=${snapshots.perf.length}`,
-    `urls=${Array.from(candidateUrls).slice(0, 10).join(' | ')}`,
+    `inspectedResponses=${inspected}`,
+    `candidateUrls=${Array.from(candidateUrls).length}`,
+    `sampleFiles=${sampledTexts.join(', ') || '-'}`,
+    `topCandidates=${Array.from(candidateUrls).slice(0, 10).join(' | ') || '-'}`,
+    `lastResponses=${responseLog.slice(-5).map(r => `${r.status} ${r.ct} ${r.url}`).join(' || ') || '-'}`,
     `ts=${new Date().toISOString()}`
-  ].join('\n');
-  fs.writeFileSync(debugPath, debug);
-  fs.writeFileSync(path.join(outDir, 'changed.flag'), changed ? '1' : '0');
+  ];
+  fs.writeFileSync(debugPath, debugLines.join('\n'));
+
+  fs.writeFileSync(path.join(dataDir, 'changed.flag'), changed ? '1' : '0');
 
   await browser.close();
 }
@@ -226,9 +202,9 @@ async function run() {
 run().catch(err => {
   console.error(err);
   try {
-    const outDir = ensureOutDir();
-    fs.writeFileSync(path.join(outDir, 'changed.flag'), '0');
-    fs.writeFileSync(path.join(outDir, 'debug_info.txt'), `ERROR=${String(err)}\nts=${new Date().toISOString()}`);
+    const { dataDir } = ensureDataDirs();
+    fs.writeFileSync(path.join(dataDir, 'changed.flag'), '0');
+    fs.writeFileSync(path.join(dataDir, 'debug_info.txt'), `ERROR=${String(err)}\nts=${new Date().toISOString()}`);
   } catch {}
   process.exit(1);
 });
