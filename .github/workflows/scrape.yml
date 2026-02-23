@@ -1,52 +1,22 @@
-name: Scrape Holdet Statistics
+# Upload artifacts (data/) og commit hele mappen
+- name: Upload data folder as artifact
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: data-folder
+    path: |
+      data
+    if-no-files-found: warn
+    retention-days: 7
 
-on:
-  schedule:
-    - cron: '0 * * * *'  # hver hele time
-  workflow_dispatch: {}
-
-jobs:
-  scrape:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write  # vi pusher data tilbage til repoet
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install deps
-        run: npm install
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
-      - name: Run scraper
-        run: npm run scrape
-
-      # NYT: Upload altid hele data/-mappen som artifact (kan downloades fra Actions)
-      - name: Upload data folder as artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: data-folder
-          path: |
-            data
-          if-no-files-found: warn
-          retention-days: 7
-
-      # NYT: Commit ALT i data/-mappen (latest.json, debug_info.txt, samples, changed.flag)
-      - name: Commit data folder (if changed)
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A data
-          # Commit kun hvis der faktisk er ændringer staged:
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "Update data artifacts [skip ci]"
-            git push
-          fi
+- name: Commit data folder (if changed)
+  run: |
+    git config user.name "github-actions[bot]"
+    git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+    git add -A data
+    if git diff --cached --quiet; then
+      echo "No changes to commit."
+    else
+      git commit -m "Update data artifacts [skip ci]"
+      git push
+    fi
