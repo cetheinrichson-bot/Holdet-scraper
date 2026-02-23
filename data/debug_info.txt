@@ -1,0 +1,7 @@
+foundPlayers=0
+inspectedResponses=68
+candidateUrls=0
+sampleFiles=-
+topCandidates=-
+lastResponses=200 application/json https://consentcdn.cookiebot.com/consentconfig/22f72a3d-dfd5-4f55-a197-09eed12cb719/settings.json || 200 text/html https://consentcdn.cookiebot.com/sdk/bc-v4.min.html || 200 application/x-javascript https://consentcdn.cookiebot.com/consentconfig/22f72a3d-dfd5-4f55-a197-09eed12cb719/holdet.dk/configuration.js || 200 application/javascript https://consent.cookiebot.com/Framework/IAB/consent-sdk-2.3.js || 200 application/x-javascript; charset=utf-8 https://consent.cookiebot.com/22f72a3d-dfd5-4f55-a197-09eed12cb719/cc.js?renew=false&referer=www.holdet.dk&dnt=false&init=false&framework=TCFv2.3
+ts=2026-02-23T09:12:43.214Z
