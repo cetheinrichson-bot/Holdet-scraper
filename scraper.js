@@ -3,8 +3,8 @@ import fs from 'fs';
 import path from 'path';
 
 // SKIFT disse to, hvis du vil over på Spring 2026
-const STATS_URL = 'https://nexus-app-fantasy-fargate.holdet.dk/da/super-manager-fall-2025/soccer/statistics';
-const START_URL = 'https://www.holdet.dk/da/fantasy/super-manager-fall-2025';
+const STATS_URL = 'https://nexus-app-fantasy-fargate.holdet.dk/da/super-manager-spring-2026/soccer/statistics';
+const START_URL = 'https://www.holdet.dk/da/fantasy/super-manager-spring-2026';
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
