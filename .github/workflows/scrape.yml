@@ -1,0 +1,51 @@
+name: Scrape Holdet Statistics
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'  # kør hver hele time
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # tillad at pushe data tilbage til repoet
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: npm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run scraper
+        run: npm run scrape
+
+      # Upload ALT i data/-mappen som artifact (til download fra Actions)
+      - name: Upload data folder as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-folder
+          path: data
+          if-no-files-found: warn
+          retention-days: 7
+
+      # Commit ALT i data/-mappen (latest.json, debug_info.txt, samples, changed.flag)
+      - name: Commit data folder (if changed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Update data artifacts [skip ci]"
+            git push
+          fi
