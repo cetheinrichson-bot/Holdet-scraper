@@ -2,14 +2,14 @@ name: Scrape Holdet Statistics
 
 on:
   schedule:
-    - cron: '0 * * * *'  # kør hver hele time
+    - cron: '0 * * * *'  # hver hele time
   workflow_dispatch: {}
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write  # vi pusher data tilbage til repoet
     steps:
       - uses: actions/checkout@v4
 
@@ -26,14 +26,27 @@ jobs:
       - name: Run scraper
         run: npm run scrape
 
-      - name: Commit data if changed
+      # NYT: Upload altid hele data/-mappen som artifact (kan downloades fra Actions)
+      - name: Upload data folder as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-folder
+          path: |
+            data
+          if-no-files-found: warn
+          retention-days: 7
+
+      # NYT: Commit ALT i data/-mappen (latest.json, debug_info.txt, samples, changed.flag)
+      - name: Commit data folder (if changed)
         run: |
-          if [ -f data/changed.flag ] && [ "$(cat data/changed.flag)" = "1" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add data/latest.json data/changed.flag
-            git commit -m "Update latest.json [skip ci]" || echo "No changes to commit"
-            git push
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data
+          # Commit kun hvis der faktisk er ændringer staged:
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
           else
-            echo "No data changes."
+            git commit -m "Update data artifacts [skip ci]"
+            git push
           fi
