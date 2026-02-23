@@ -1,9 +1,9 @@
 name: Scrape Holdet Statistics
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'  # kør hver hele time
+    - cron: "*/30 * * * *"   # kør hver 30. minut
+  workflow_dispatch:
 
 jobs:
   scrape:
