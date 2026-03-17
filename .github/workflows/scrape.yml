@@ -1,19 +1,15 @@
 name: Scrape Holdet Statistics
-
 on:
   schedule:
     - cron: "49 * * * *"
   workflow_dispatch:
-
 jobs:
   scrape:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # tillad at pushe data tilbage til repoet
-
+      contents: write
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -24,10 +20,10 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
+      # ── Din originale scraper – uændret ──
       - name: Run scraper
         run: npm run scrape
 
-      # Upload ALT i data/-mappen som artifact (til download fra Actions)
       - name: Upload data folder as artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -37,7 +33,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      # Commit ALT i data/-mappen (latest.json, debug_info.txt, samples, changed.flag)
       - name: Commit data folder (if changed)
         run: |
           git config user.name "github-actions[bot]"
@@ -49,3 +44,13 @@ jobs:
             git commit -m "Update data artifacts [skip ci]"
             git push
           fi
+
+      # ── Nyt trin: sync vækstdata til Firebase ──
+      # Kører KUN hvis data/latest.json eksisterer og har ændret sig.
+      # Rører ikke ved din Google Sheets-integration.
+      - name: Sync growth data to Firebase
+        if: always()
+        env:
+          FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: node firebase-sync.js
