@@ -48,6 +48,9 @@ jobs:
       # ── Nyt trin: sync vækstdata til Firebase ──
       # Kører KUN hvis data/latest.json eksisterer og har ændret sig.
       # Rører ikke ved din Google Sheets-integration.
+      - name: Install firebase-admin
+        run: npm install firebase-admin
+
       - name: Sync growth data to Firebase
         if: always()
         env:
