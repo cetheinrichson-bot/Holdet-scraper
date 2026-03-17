@@ -1,118 +1,137 @@
 /**
- * firebase-sync.js – Læser data/latest.json og opdaterer KUN vækstdata i Firebase.
+ * firebase-sync.cjs – Synkroniserer vækstdata fra latest.json til Firebase.
  *
- * Dette script:
- *   1. Læser hvilken runde der er aktiv fra Firebase
- *   2. For hver spiller i latest.json opdateres roundGrowth og totalGrowth
- *   3. Rører IKKE ved club, position, owner eller andre felter
- *
- * Din eksisterende scraper og Google Sheets-integration forbliver 100% uændret.
- * Dette script kører som et EKSTRA trin i GitHub Actions efter din normale scrape.
- *
- * Kræver miljøvariabler (sættes som GitHub Secrets):
- *   FIREBASE_DATABASE_URL   – fx "https://dit-projekt-default-rtdb.firebaseio.com"
- *   FIREBASE_SERVICE_ACCOUNT_JSON – hele indholdet af serviceAccountKey.json som string
+ * Rundelogik er fuldt automatisk – ingen manuel status-opdatering nødvendig.
+ * Aktiv runde bestemmes udelukkende af om now >= start && now <= end,
+ * præcis som dit Google Sheets AppScript gør.
  */
 
 const admin = require("firebase-admin");
 const fs = require("fs");
 const path = require("path");
 
-// Initialiser Firebase med service account fra miljøvariabel
 const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 if (!serviceAccountJson) {
   console.error("Mangler FIREBASE_SERVICE_ACCOUNT_JSON miljøvariabel");
   process.exit(1);
 }
 
-const serviceAccount = JSON.parse(serviceAccountJson);
-
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+  credential: admin.credential.cert(JSON.parse(serviceAccountJson)),
   databaseURL: process.env.FIREBASE_DATABASE_URL,
 });
 
 const db = admin.database();
 
 async function sync() {
-  // 1. Læs latest.json fra data/-mappen (din scrapers output)
+  // 1. Læs latest.json
   const dataPath = path.join(__dirname, "data", "latest.json");
   if (!fs.existsSync(dataPath)) {
-    console.log("Ingen latest.json fundet – springer sync over");
+    console.log("Ingen latest.json fundet – springer over");
     process.exit(0);
   }
-
   const latest = JSON.parse(fs.readFileSync(dataPath, "utf8"));
   console.log(`Læste ${latest.length} spillere fra latest.json`);
 
-  // 2. Find aktiv runde fra Firebase
+  // 2. Hent runder fra Firebase
   const roundsSnap = await db.ref("rounds").once("value");
   const rounds = roundsSnap.val() || {};
-  const activeRound = Object.entries(rounds).find(([, r]) => r.status === "active");
 
-  if (!activeRound) {
-    console.log("Ingen aktiv runde fundet i Firebase – springer sync over");
+  // 3. Find aktiv runde udelukkende baseret på tidsvindue – ingen manuel status nødvendig
+  const now = new Date();
+  let activeRoundKey = null;
+  let activeRound = null;
+
+  for (const [key, round] of Object.entries(rounds)) {
+    const start = new Date(round.start);
+    const end = new Date(round.end);
+    if (now >= start && now <= end) {
+      activeRoundKey = key;
+      activeRound = round;
+      break;
+    }
+  }
+
+  // 4. Udenfor alle vinduer → stop
+  if (!activeRoundKey) {
+    console.log(`Udenfor rundevindue (nu: ${now.toISOString()}) – springer over`);
     process.exit(0);
   }
 
-  const [roundKey, roundData] = activeRound;
-  console.log(`Aktiv runde: ${roundData.label} (${roundKey})`);
+  console.log(`Aktiv runde: ${activeRound.label} | Vindue: ${activeRound.start} → ${activeRound.end}`);
 
-  // 3. Hent nuværende spillerdata fra Firebase
+  // 5. Hent spillere
   const playersSnap = await db.ref("players").once("value");
   const players = playersSnap.val() || {};
 
-  // 4. Byg opdateringer – KUN vækstfelter, rører ikke ved club/position/owner
+  // 6. Deduplikér latest.json (samme logik som AppScript)
+  const dedup = new Map();
+  for (const x of latest) {
+    const name = String(x.fullName || "").trim();
+    const growth = Number(x.growth);
+    if (!name || !Number.isFinite(growth)) continue;
+    if (!dedup.has(name.toLowerCase())) {
+      dedup.set(name.toLowerCase(), { name, growth });
+    }
+  }
+
+  // 7. Byg opdateringer
   const updates = {};
   let updated = 0;
   let notFound = 0;
 
-  for (const scraped of latest) {
-    const name = scraped.fullName;
-    const growth = scraped.growth ?? 0;
+  for (const { name, growth } of dedup.values()) {
+    const safeKey = name.replace(/[.#$\/\[\]]/g, "_");
+    const playerKey = players[name] ? name : players[safeKey] ? safeKey : null;
+    if (!playerKey) { notFound++; continue; }
 
-    if (!players[name]) {
-      // Spiller fra holdet.dk men ikke i vores database – log og fortsæt
-      notFound++;
-      continue;
+    const playerData = players[playerKey];
+    updates[`players/${playerKey}/roundGrowth/${activeRoundKey}`] = growth;
+
+    // Genberegn totalvækst
+    const existing = playerData.roundGrowth || {};
+    let total = 0;
+    for (const [rk, val] of Object.entries(existing)) {
+      total += rk === activeRoundKey ? growth : (val || 0);
     }
-
-    // Opdater rundevækst for aktiv runde
-    updates[`players/${name}/roundGrowth/${roundKey}`] = growth;
-
-    // Genberegn totalvækst som sum af alle kendte runder + ny vækst
-    const existingGrowth = players[name].roundGrowth || {};
-    const total = Object.entries(existingGrowth).reduce((sum, [key, val]) => {
-      // Brug ny værdi for aktiv runde, ellers eksisterende
-      return sum + (key === roundKey ? growth : (val || 0));
-    }, 0);
-
-    // Hvis aktiv runde ikke fandtes i eksisterende data, tilføj den
-    const hadRound = roundKey in existingGrowth;
-    updates[`players/${name}/totalGrowth`] = hadRound ? total : total + growth;
-
+    if (!(activeRoundKey in existing)) total += growth;
+    updates[`players/${playerKey}/totalGrowth`] = total;
     updated++;
   }
 
-  // 5. Skriv alle opdateringer til Firebase i ét kald
+  // 8. Skriv til Firebase
   if (Object.keys(updates).length > 0) {
     await db.ref().update(updates);
-    console.log(`✓ Opdaterede ${updated} spillere for ${roundData.label}`);
+    console.log(`✓ Opdaterede ${updated} spillere for ${activeRound.label}`);
+  }
+  if (notFound > 0) console.log(`  (${notFound} spillere ikke fundet i Firebase)`);
+
+  // 9. Opdater rundens status automatisk i Firebase så websitet kan vise det korrekt
+  const statusUpdates = {};
+  for (const [key, round] of Object.entries(rounds)) {
+    const start = new Date(round.start);
+    const end = new Date(round.end);
+    let newStatus;
+    if (now >= start && now <= end) newStatus = "active";
+    else if (now > end) newStatus = "done";
+    else newStatus = "upcoming";
+
+    if (round.status !== newStatus) {
+      statusUpdates[`rounds/${key}/status`] = newStatus;
+      console.log(`  Runde ${key}: ${round.status} → ${newStatus}`);
+    }
+  }
+  if (Object.keys(statusUpdates).length > 0) {
+    await db.ref().update(statusUpdates);
+    console.log(`✓ Opdaterede ${Object.keys(statusUpdates).length} runde-statuser automatisk`);
   }
 
-  if (notFound > 0) {
-    console.log(`  (${notFound} spillere fra holdet.dk ikke fundet i Firebase – ignoreret)`);
-  }
-
-  // 6. Opdater tidsstempel for seneste sync
-  await db.ref("meta/lastSync").set(new Date().toISOString());
+  await db.ref("meta/lastSync").set(now.toISOString());
   console.log("✓ Sync færdig");
-
   process.exit(0);
 }
 
-sync().catch((err) => {
-  console.error("Fejl under Firebase sync:", err);
+sync().catch(err => {
+  console.error("Fejl under sync:", err);
   process.exit(1);
 });
-
