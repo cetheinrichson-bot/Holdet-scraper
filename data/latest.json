@@ -277,7 +277,7 @@
   },
   {
     "fullName": "Junnosuke Suzuki",
-    "growth": -9000
+    "growth": 1000
   },
   {
     "fullName": "Pantelis Hatzidiakos",
@@ -309,15 +309,15 @@
   },
   {
     "fullName": "Jordan Larsson",
-    "growth": 1000
-  },
-  {
-    "fullName": "Mohamed Elyounoussi",
     "growth": -9000
   },
   {
+    "fullName": "Mohamed Elyounoussi",
+    "growth": 1000
+  },
+  {
     "fullName": "Viktor Claesson",
-    "growth": -5000
+    "growth": 27000
   },
   {
     "fullName": "Magnus Mattsson",
@@ -325,7 +325,7 @@
   },
   {
     "fullName": "Mads Emil Madsen",
-    "growth": -5000
+    "growth": 7000
   },
   {
     "fullName": "William Clem",
@@ -337,7 +337,7 @@
   },
   {
     "fullName": "Robert",
-    "growth": -5000
+    "growth": 27000
   },
   {
     "fullName": "Amir Richardson",
@@ -345,7 +345,7 @@
   },
   {
     "fullName": "Oliver Højer",
-    "growth": -9000
+    "growth": -29000
   },
   {
     "fullName": "Dominik Sarapata",
@@ -361,7 +361,7 @@
   },
   {
     "fullName": "Geovanni Vianney Ndjee",
-    "growth": -5000
+    "growth": 7000
   },
   {
     "fullName": "Abdul Daramy",
@@ -369,7 +369,7 @@
   },
   {
     "fullName": "Viktor Bjarki Dadason",
-    "growth": -5000
+    "growth": 17000
   },
   {
     "fullName": "Andreas Cornelius",
@@ -377,7 +377,7 @@
   },
   {
     "fullName": "Youssoufa Moukoko",
-    "growth": 11000
+    "growth": 21000
   },
   {
     "fullName": "Junior Brumado",
@@ -1369,7 +1369,7 @@
   },
   {
     "fullName": "Oscar Buch",
-    "growth": -5000
+    "growth": 7000
   },
   {
     "fullName": "Friday Etim",
@@ -1421,7 +1421,7 @@
   },
   {
     "fullName": "Emilio Simonsen",
-    "growth": -5000
+    "growth": 7000
   },
   {
     "fullName": "Agon Mucolli",
@@ -1429,7 +1429,7 @@
   },
   {
     "fullName": "Moses Opondo",
-    "growth": -5000
+    "growth": 7000
   },
   {
     "fullName": "Malthe Ladefoged",
@@ -1461,7 +1461,7 @@
   },
   {
     "fullName": "Etienne Green",
-    "growth": 42000
+    "growth": 77000
   },
   {
     "fullName": "Svenn Crone",
@@ -1473,11 +1473,11 @@
   },
   {
     "fullName": "Anders Dahl",
-    "growth": -5000
+    "growth": 7000
   },
   {
     "fullName": "Kristian Pedersen",
-    "growth": -5000
+    "growth": 7000
   },
   {
     "fullName": "Jeppe Kudsk",
