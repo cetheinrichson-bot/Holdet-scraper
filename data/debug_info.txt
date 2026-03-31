@@ -3,4 +3,4 @@ status=200
 contentType=text/html; charset=utf-8
 bodyLen=455057
 statsUrl=https://nexus-app-fantasy-fargate.holdet.dk/da/super-manager-spring-2026/soccer/statistics
-ts=2026-03-31T20:13:17.213Z
+ts=2026-03-31T20:27:53.811Z
