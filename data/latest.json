@@ -265,23 +265,23 @@
   },
   {
     "fullName": "Birger Meling",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Mathias Zanka Jørgensen",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Marcos Lopez",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Aurelio Buta",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Rodrigo Huescas",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Munashe Garananga",
@@ -289,15 +289,15 @@
   },
   {
     "fullName": "Gabriel Pereira",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Junnosuke Suzuki",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Pantelis Hatzidiakos",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Yoram Zague",
@@ -305,59 +305,59 @@
   },
   {
     "fullName": "Kenay Myrie",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Oscar Buur",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Dominik Kotarski",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Runar Alex Runarsson",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Thomas Delaney",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Mohamed Elyounoussi",
-    "growth": 0
+    "growth": 19000
   },
   {
     "fullName": "Viktor Claesson",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Jordan Larsson",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Mads Emil Madsen",
-    "growth": 0
+    "growth": 69000
   },
   {
     "fullName": "Magnus Mattsson",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "William Clem",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Elias Achouri",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Robert",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Amir Richardson",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Dominik Sarapata",
@@ -365,35 +365,35 @@
   },
   {
     "fullName": "Jonathan Moalem",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Liam West",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Oliver Højer",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Abdul Daramy",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Viktor Bjarki Dadason",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Geovanni Vianney Ndjee",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Youssoufa Moukoko",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Andreas Cornelius",
-    "growth": 0
+    "growth": 134000
   },
   {
     "fullName": "Junior Brumado",
@@ -521,11 +521,11 @@
   },
   {
     "fullName": "Tobias Salquist",
-    "growth": 9000
+    "growth": 44000
   },
   {
     "fullName": "Peter Ankersen",
-    "growth": -11000
+    "growth": 14000
   },
   {
     "fullName": "Andreas Søndenbroe",
@@ -533,7 +533,7 @@
   },
   {
     "fullName": "Victor Gustafsen",
-    "growth": -5000
+    "growth": 42000
   },
   {
     "fullName": "Villads Rutkjær",
@@ -553,15 +553,15 @@
   },
   {
     "fullName": "Runar Norheim",
-    "growth": 9000
+    "growth": 34000
   },
   {
     "fullName": "Noah Markmann",
-    "growth": 7000
+    "growth": 42000
   },
   {
     "fullName": "Juho Lähteenmäki",
-    "growth": 9000
+    "growth": 34000
   },
   {
     "fullName": "Andreas Gülstorff",
@@ -573,11 +573,11 @@
   },
   {
     "fullName": "Andreas Hansen",
-    "growth": 29000
+    "growth": 69000
   },
   {
     "fullName": "Mark Brink",
-    "growth": 9000
+    "growth": 44000
   },
   {
     "fullName": "Nicklas Røjkjær",
@@ -593,7 +593,7 @@
   },
   {
     "fullName": "Caleb Yirenkyi",
-    "growth": 9000
+    "growth": 44000
   },
   {
     "fullName": "Diallo Sanoussi",
@@ -605,7 +605,7 @@
   },
   {
     "fullName": "Justin Janssen",
-    "growth": 9000
+    "growth": 234000
   },
   {
     "fullName": "Hjalte Boe Rasmussen",
@@ -613,7 +613,7 @@
   },
   {
     "fullName": "Prince Amoako Junior",
-    "growth": 179000
+    "growth": 194000
   },
   {
     "fullName": "Villum Berthelsen",
@@ -621,11 +621,11 @@
   },
   {
     "fullName": "Lamine Sadio",
-    "growth": 7000
+    "growth": 42000
   },
   {
     "fullName": "Ibrahim Adel",
-    "growth": 69000
+    "growth": 94000
   },
   {
     "fullName": "Villum Dalsgaard",
@@ -637,11 +637,11 @@
   },
   {
     "fullName": "Malte Heyde",
-    "growth": -5000
+    "growth": 102000
   },
   {
     "fullName": "Levy Nene",
-    "growth": -5000
+    "growth": 42000
   },
   {
     "fullName": "Souleymane Alio",
@@ -649,7 +649,7 @@
   },
   {
     "fullName": "Alexander Lind",
-    "growth": 19000
+    "growth": 44000
   },
   {
     "fullName": "Jay-Roy Grot",
@@ -897,11 +897,11 @@
   },
   {
     "fullName": "Tim Freriks",
-    "growth": -5000
+    "growth": -9000
   },
   {
     "fullName": "Dorian Junior",
-    "growth": 69000
+    "growth": 71000
   },
   {
     "fullName": "Osman Addo",
@@ -913,11 +913,11 @@
   },
   {
     "fullName": "Mees Hoedemakers",
-    "growth": -5000
+    "growth": -9000
   },
   {
     "fullName": "Sami Jalal Karchoud",
-    "growth": 9000
+    "growth": -7000
   },
   {
     "fullName": "Yonis Njoh",
@@ -933,7 +933,7 @@
   },
   {
     "fullName": "Charly Nouck Horneman",
-    "growth": 189000
+    "growth": 173000
   },
   {
     "fullName": "Carl Christensen",
@@ -941,7 +941,7 @@
   },
   {
     "fullName": "Thomas Jørgensen",
-    "growth": 9000
+    "growth": -7000
   },
   {
     "fullName": "Frederik Damkjer",
@@ -953,15 +953,15 @@
   },
   {
     "fullName": "Mads Søndergaard",
-    "growth": 19000
+    "growth": 11000
   },
   {
     "fullName": "Asker Beck",
-    "growth": -5000
+    "growth": -9000
   },
   {
     "fullName": "Lucas Lund Pedersen",
-    "growth": 24000
+    "growth": 8000
   },
   {
     "fullName": "Filip Djukic",
@@ -969,11 +969,11 @@
   },
   {
     "fullName": "Jeppe Grønning",
-    "growth": -11000
+    "growth": -19000
   },
   {
     "fullName": "Hjalte Bidstrup",
-    "growth": -11000
+    "growth": -19000
   },
   {
     "fullName": "Mikkel Bach Løndal",
@@ -989,19 +989,19 @@
   },
   {
     "fullName": "Daniel Anyembe",
-    "growth": 9000
+    "growth": -7000
   },
   {
     "fullName": "Oliver Bundgaard Kristensen",
-    "growth": -5000
+    "growth": -9000
   },
   {
     "fullName": "Srdan Kuzmic",
-    "growth": -11000
+    "growth": -19000
   },
   {
     "fullName": "Lukas Emil Kirkegaard",
-    "growth": 9000
+    "growth": -7000
   },
   {
     "fullName": "Zan Zaletel",
@@ -1009,7 +1009,7 @@
   },
   {
     "fullName": "Jean-Manuel Mbom",
-    "growth": -5000
+    "growth": -9000
   },
   {
     "fullName": "Magnus Riisgaard Jensen",
@@ -1141,11 +1141,11 @@
   },
   {
     "fullName": "Wahid Faghir",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Anders K. Jacobsen",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Amin Chiakha",
@@ -1153,39 +1153,39 @@
   },
   {
     "fullName": "Jelle Duin",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Abdoulaye Camara",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Ransford Amoo",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Eman Subasic",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Nicolas Gammelgaard",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Bismark Edjeodji",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Mike Vestergård",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Alexi Pitu",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Max Jensen",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Tobias Lykkebak",
@@ -1193,43 +1193,43 @@
   },
   {
     "fullName": "Sander Ravn",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Tobias Bach",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Christian Gammelgaard",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Tobias Lauritsen",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Mikkel Duelund",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Lundrim Hetemi",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Jonathan Amon",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Mads Enggård",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Andrew Hjulsager",
-    "growth": 0
+    "growth": 69000
   },
   {
     "fullName": "Giorgi Tabatadze",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Anders Sønderskov",
@@ -1237,47 +1237,47 @@
   },
   {
     "fullName": "Igor Vekic",
-    "growth": 0
+    "growth": 14000
   },
   {
     "fullName": "Gustav Nørregaard Knudsen",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Tobias Haahr Jakobsen",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Hjalte Gitz",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Luka Latsabidze",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Christian Sørensen",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Lasse Nielsen",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Damian van Bruggen",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Thomas Gundelund",
-    "growth": 0
+    "growth": 9000
   },
   {
     "fullName": "Valdemar Lund Jensen",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Lasse Flø",
-    "growth": 0
+    "growth": 204000
   },
   {
     "fullName": "Luka Hujber",
@@ -1285,7 +1285,7 @@
   },
   {
     "fullName": "Stefan Velkov",
-    "growth": 0
+    "growth": -5000
   },
   {
     "fullName": "Alexander Busch",
