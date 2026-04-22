@@ -141,7 +141,7 @@
   },
   {
     "fullName": "Jacob Ambæk",
-    "growth": 82000
+    "growth": 72000
   },
   {
     "fullName": "Sho Fukuda",
@@ -193,7 +193,7 @@
   },
   {
     "fullName": "Nicolai Vallys",
-    "growth": 92000
+    "growth": 82000
   },
   {
     "fullName": "Mads Frøkjær-Jensen",
@@ -640,11 +640,11 @@
     "growth": 0
   },
   {
-    "fullName": "Levy Nene",
+    "fullName": "Souleymane Alio",
     "growth": 0
   },
   {
-    "fullName": "Souleymane Alio",
+    "fullName": "Levy Nene",
     "growth": 0
   },
   {
@@ -656,16 +656,16 @@
     "growth": -17000
   },
   {
-    "fullName": "Noah Ganaus",
-    "growth": -7000
-  },
-  {
     "fullName": "Lasse Legolas",
     "growth": -5000
   },
   {
     "fullName": "Jona Niemiec",
     "growth": 19000
+  },
+  {
+    "fullName": "Noah Ganaus",
+    "growth": -7000
   },
   {
     "fullName": "Magnus Andersen",
@@ -888,11 +888,11 @@
     "growth": 0
   },
   {
-    "fullName": "Amin Al-Hamawi",
+    "fullName": "Musa Toure",
     "growth": 0
   },
   {
-    "fullName": "Musa Toure",
+    "fullName": "Amin Al-Hamawi",
     "growth": 0
   },
   {
@@ -902,6 +902,10 @@
   {
     "fullName": "Dorian Junior",
     "growth": -5000
+  },
+  {
+    "fullName": "Adam Kleis-Kristoffersen",
+    "growth": -14000
   },
   {
     "fullName": "Osman Addo",
@@ -1144,16 +1148,16 @@
     "growth": 113000
   },
   {
+    "fullName": "Jelle Duin",
+    "growth": -5000
+  },
+  {
     "fullName": "Anders K. Jacobsen",
     "growth": -5000
   },
   {
     "fullName": "Amin Chiakha",
     "growth": 0
-  },
-  {
-    "fullName": "Jelle Duin",
-    "growth": -5000
   },
   {
     "fullName": "Abdoulaye Camara",
@@ -1400,16 +1404,20 @@
     "growth": 54000
   },
   {
-    "fullName": "Alexander Simmelhack",
-    "growth": 34000
-  },
-  {
     "fullName": "Asbjørn Bøndergaard",
     "growth": 0
   },
   {
     "fullName": "Tonni Adamsen",
     "growth": 279000
+  },
+  {
+    "fullName": "Alexander Simmelhack",
+    "growth": 34000
+  },
+  {
+    "fullName": "Patrick Egelund",
+    "growth": 0
   },
   {
     "fullName": "Martin Huldahl",
@@ -1420,19 +1428,15 @@
     "growth": 0
   },
   {
+    "fullName": "Elias Hansborg-Sørensen",
+    "growth": 0
+  },
+  {
     "fullName": "Oscar Buch",
     "growth": 0
   },
   {
     "fullName": "Friday Etim",
-    "growth": 0
-  },
-  {
-    "fullName": "Elias Hansborg-Sørensen",
-    "growth": 0
-  },
-  {
-    "fullName": "Patrick Egelund",
     "growth": 0
   },
   {
