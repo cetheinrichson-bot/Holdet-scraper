@@ -12,15 +12,12 @@ jobs:
           node-version: 20
       - run: npm install
       - run: npm install firebase-admin
-      - run: npx playwright install --with-deps chromium
-      - run: node scrape-positions.cjs
+      - run: node scraper-positions.mjs
         env:
           FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: debug
-          path: |
-            debug.png
-            debug.html
+          name: positions-debug
+          path: data/samples/stats_positions_raw.txt
