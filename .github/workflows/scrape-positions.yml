@@ -20,4 +20,4 @@ jobs:
         if: always()
         with:
           name: positions-debug
-          path: data/samples/stats_positions_raw.txt
+          path: data/samples/
