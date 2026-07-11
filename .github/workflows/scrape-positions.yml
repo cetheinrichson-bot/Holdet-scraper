@@ -20,4 +20,4 @@ jobs:
         if: always()
         with:
           name: positions-debug
-          path: data/samples/
+          path: data/samples/full_body.txt
