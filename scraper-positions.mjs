@@ -10,22 +10,25 @@ const STATS_URL = 'https://nexus-app-fantasy-fargate.holdet.dk/da/super-manager-
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
 
 const posMap = {
-  'Goalkeeper':'MÅL','goalkeeper':'MÅL',
-  'Defender':'FOR','defender':'FOR',
-  'Midfielder':'MID','midfielder':'MID',
-  'Forward':'ANG','forward':'ANG',
-  1:'MÅL', 2:'FOR', 3:'MID', 4:'ANG',
+  'Målmand':'MÅL','Forsvar':'FOR','Midtbane':'MID','Angreb':'ANG',
 };
 
 admin.initializeApp({
-  credential: admin.credential.cert(
-    JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
-  ),
+  credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)),
   databaseURL: process.env.FIREBASE_DATABASE_URL,
 });
 const db = admin.database();
 
 if (!fs.existsSync('data/samples')) fs.mkdirSync('data/samples', { recursive: true });
+
+function normalizeRSC(s) {
+  let t = String(s || '');
+  t = t.replace(/&quot;/g, '"');
+  t = t.replace(/\\"/g, '"');
+  t = t.replace(/\\u0022/g, '"');
+  t = t.replace(/\\r/g, '').replace(/\\n/g, '\n');
+  return t;
+}
 
 async function run() {
   console.log('Starter browser...');
@@ -33,164 +36,92 @@ async function run() {
   const context = await browser.newContext({ userAgent: UA });
   const page = await context.newPage();
 
-  // Intercepter ALLE responses og gem dem der indeholder spillerdata
-  const capturedBodies = [];
+  // Fang alle responses med spillerdata
+  const bodies = [];
   page.on('response', async (response) => {
     const url = response.url();
-    // Fang RSC/API responses der kan indeholde spillerdata
-    if (url.includes('statistics') || url.includes('players') || url.includes('elements')) {
-      try {
-        const body = await response.text();
-        if (body.includes('fullName') || body.includes('growth')) {
-          capturedBodies.push({ url, body });
-          console.log(`✓ Fangede response med spillerdata fra: ${url.slice(0, 80)}`);
-        }
-      } catch {}
-    }
+    if (!url.includes('statistics')) return;
+    try {
+      const body = await response.text();
+      if (body.includes('fullName') || body.includes('fullName')) {
+        bodies.push(body);
+        console.log(`✓ Response fra ${url.slice(0,80)}: ${body.length} bytes`);
+      }
+    } catch {}
   });
 
-  // Gå til startsiden først for at sætte cookies
-  try {
-    await page.goto(START_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(2000);
-  } catch {}
+  try { await page.goto(START_URL, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch {}
 
-  // Gå til statistiksiden og vent på at data loader
   console.log('Henter statistikside...');
   try {
     await page.goto(STATS_URL, { waitUntil: 'networkidle', timeout: 60000 });
-    await page.waitForTimeout(5000);
-  } catch (e) {
-    console.log('Timeout ved networkidle, fortsætter...');
-  }
+    await page.waitForTimeout(3000);
+  } catch {}
 
-  // Prøv også direkte request med RSC header
-  const headers = {
-    'User-Agent': UA,
-    'Accept': 'text/x-component',
-    'Accept-Language': 'da-DK,da;q=0.9',
-    'Referer': START_URL,
-    'RSC': '1',
-    'Next-Router-State-Tree': '%5B%22%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D',
-  };
+  // Direkte request
+  const headers = { 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'da-DK,da;q=0.9', 'Referer': START_URL };
   try {
     const resp = await page.request.get(STATS_URL, { headers });
     const body = await resp.text();
-    console.log(`Direkte RSC request: ${body.length} bytes`);
-    if (body.includes('fullName') || body.includes('growth')) {
-      capturedBodies.push({ url: STATS_URL + '?rsc', body });
-      console.log('✓ RSC response indeholder spillerdata!');
+    if (body.includes('fullName')) {
+      bodies.push(body);
+      console.log(`✓ Direkte request: ${body.length} bytes`);
     }
-    fs.writeFileSync('data/samples/rsc_response.txt', body.slice(0, 200000));
-  } catch (e) {
-    console.log('RSC request fejlede:', e.message);
-  }
-
-  // Prøv standard request
-  try {
-    const resp2 = await page.request.get(STATS_URL, {
-      headers: { ...headers, 'Accept': '*/*' }
-    });
-    const body2 = await resp2.text();
-    console.log(`Standard request: ${body2.length} bytes`);
-    if (body2.includes('fullName') || body2.includes('growth')) {
-      capturedBodies.push({ url: STATS_URL + '?std', body: body2 });
-      console.log('✓ Standard response indeholder spillerdata!');
-    }
-    fs.writeFileSync('data/samples/std_response.txt', body2.slice(0, 200000));
   } catch {}
 
   await browser.close();
 
-  console.log(`\nTotal responses med spillerdata: ${capturedBodies.length}`);
-
-  if (capturedBodies.length === 0) {
-    console.log('Ingen spillerdata fundet i nogen responses');
-    process.exit(1);
-  }
-
-  // Parse spillere fra alle responses
+  // Parser alle bodies
   const players = new Map();
 
-  for (const { url, body } of capturedBodies) {
-    console.log(`\nParser: ${url.slice(0, 80)}`);
-
+  for (const rawBody of bodies) {
     // Normaliser escaped JSON
-    let s = body
-      .replace(/&quot;/g, '"')
-      .replace(/\\"/g, '"')
-      .replace(/\\u0022/g, '"')
-      .replace(/\\r/g, '')
-      .replace(/\\n/g, '\n');
+    const s = normalizeRSC(rawBody);
 
-    // Find spillerblokke med fullName og context
+    // Gem sample til debug
+    if (!fs.existsSync('data/samples/normalized.txt')) {
+      // Find et eksempel med fullName og gem kontekst
+      const idx = s.indexOf('"fullName"');
+      if (idx !== -1) {
+        fs.writeFileSync('data/samples/normalized.txt', s.slice(idx, idx + 2000));
+      }
+    }
+
+    // Bred regex: find fullName og søg efter position.title inden for 2000 tegn
     const nameRe = /"fullName"\s*:\s*"([^"]+)"/g;
     let m;
-    let found = 0;
     while ((m = nameRe.exec(s)) !== null) {
       const name = m[1].trim();
-      const ctx = s.slice(Math.max(0, m.index - 800), m.index + 800);
+      const ctx = s.slice(m.index, m.index + 2000);
 
-      // Find position
-      let pos = null;
-      const posPatterns = [
-        /"position"\s*:\s*"([^"]+)"/,
-        /"positionId"\s*:\s*(\d+)/,
-        /"positionType"\s*:\s*"([^"]+)"/,
-        /"playerType"\s*:\s*"([^"]+)"/,
-        /"type"\s*:\s*"(Goalkeeper|Defender|Midfielder|Forward)"/i,
-      ];
-      for (const pat of posPatterns) {
-        const pm = pat.exec(ctx);
-        if (pm) {
-          pos = posMap[pm[1]] || posMap[parseInt(pm[1])] || null;
-          if (pos) break;
-        }
-      }
-
-      // Find klub
+      // Find team name
       let club = null;
-      const clubPatterns = [
-        /"(?:teamSlug|team_slug|slug)"\s*:\s*"((?:agf|ob|brondby|fc-koebenhavn|fc-midtjylland|viborg|silkeborg|randers|lyngby|soenderjyske|ac-horsens|fc-nordsjaelland)[^"]+)"/i,
-        /"teamName"\s*:\s*"([^"]+)"/,
-        /"teamShortName"\s*:\s*"([^"]+)"/,
-        /"club"\s*:\s*"([^"]+)"/,
-        /"team"\s*:\s*\{[^}]*"name"\s*:\s*"([^"]+)"/,
-        /"team"\s*:\s*\{[^}]*"slug"\s*:\s*"([^"]+)"/,
-      ];
-      for (const pat of clubPatterns) {
-        const cm = pat.exec(ctx);
-        if (cm) { club = cm[1]; break; }
-      }
+      const teamM = /"team"\s*:\s*\{[^}]*"name"\s*:\s*"([^"]+)"/.exec(ctx);
+      if (teamM) club = teamM[1];
 
-      // Brug også slug fra URL-pattern
-      if (!club) {
-        const slugM = /"slug"\s*:\s*"([a-z_-]{3,30})"/.exec(ctx);
-        if (slugM && !slugM[1].includes('statistics') && !slugM[1].includes('soccer')) {
-          club = slugM[1];
-        }
-      }
+      // Find position title (Målmand/Forsvar/Midtbane/Angreb)
+      let position = null;
+      const posM = /"position"\s*:\s*\{[^}]*"title"\s*:\s*"(Målmand|Forsvar|Midtbane|Angreb)"/.exec(ctx);
+      if (posM) position = posMap[posM[1]];
 
-      if (!players.has(name)) players.set(name, { position: null, club: null });
-      if (pos && !players.get(name).position) players.get(name).position = pos;
-      if (club && !players.get(name).club) players.get(name).club = club;
-      found++;
+      if (!players.has(name) || (!players.get(name).position && position)) {
+        players.set(name, { club, position });
+      }
     }
-    console.log(`  Fandt ${found} navne, ${[...players.values()].filter(p=>p.position).length} med position`);
   }
+
+  console.log(`\nFandt ${players.size} spillere`);
+  const withPos  = [...players.values()].filter(p => p.position).length;
+  const withClub = [...players.values()].filter(p => p.club).length;
+  console.log(`Med position: ${withPos}/${players.size}`);
+  console.log(`Med klub: ${withClub}/${players.size}`);
 
   // Vis sample
-  console.log('\nSample spillere:');
-  let i = 0;
-  for (const [name, data] of players) {
-    if (i++ > 10) break;
-    console.log(`  ${name}: pos=${data.position||'?'} club=${data.club||'?'}`);
+  let shown = 0;
+  for (const [name, d] of players) {
+    if (shown++ >= 8) break;
+    console.log(`  ${name}: pos=${d.position||'?'} club=${d.club||'?'}`);
   }
-
-  const withPos = [...players.values()].filter(p => p.position).length;
-  const withClub = [...players.values()].filter(p => p.club).length;
-  console.log(`\nMed position: ${withPos}/${players.size}`);
-  console.log(`Med klub: ${withClub}/${players.size}`);
 
   // Opdater Firebase
   const snap = await db.ref('players').once('value');
@@ -202,21 +133,18 @@ async function run() {
 
   const updates = {};
   let updated = 0;
-  for (const [name, data] of players) {
+  for (const [name, d] of players) {
     const key = nameToKey[name];
     if (!key) continue;
-    if (data.position) updates[`players/${key}/position`] = data.position;
-    if (data.club) updates[`players/${key}/club`] = data.club;
-    if (data.position || data.club) updated++;
+    if (d.position) updates[`players/${key}/position`] = d.position;
+    if (d.club)     updates[`players/${key}/club`]     = d.club;
+    if (d.position || d.club) updated++;
   }
 
   if (Object.keys(updates).length > 0) {
     await db.ref().update(updates);
     console.log(`\n✓ Opdaterede ${updated} spillere i Firebase!`);
-  } else {
-    console.log('\nIngen opdateringer at skrive');
   }
-
   process.exit(0);
 }
 
