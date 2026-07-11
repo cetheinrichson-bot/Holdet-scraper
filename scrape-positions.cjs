@@ -1,8 +1,6 @@
 /**
  * scrape-positions.cjs
  * Henter position og klub for alle spillere fra holdet.dk
- * og skriver det til Firebase.
- * Kører én gang - rører ikke ved growth/roundGrowth
  */
 
 const { chromium } = require("playwright");
@@ -20,99 +18,67 @@ admin.initializeApp({
 const db = admin.database();
 
 const STATS_URL = "https://nexus-app-fantasy-fargate.holdet.dk/da/super-manager-fall-2026/soccer/statistics";
-
-// Holdet.dk position ID -> vores format
 const posMap = { 1:"MÅL", 2:"FOR", 3:"MID", 4:"ANG" };
 
 async function run() {
   console.log("Starter browser...");
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  const context = await browser.newContext();
+  const page = await context.newPage();
 
-  // Intercepter API-kald for at fange spillerdata
-  const players = {};
-
+  // Gem alle JSON responses
+  const allResponses = [];
   page.on("response", async (response) => {
-    const url = response.url();
-    if (!url.includes("statistics") && !url.includes("players") && !url.includes("roster")) return;
+    const ct = response.headers()["content-type"] || "";
+    if (!ct.includes("json")) return;
     try {
       const json = await response.json();
-      // Søg efter spillere i response
-      const items = json?.data || json?.players || json?.rows || json || [];
-      if (!Array.isArray(items)) return;
-      for (const p of items) {
-        const name = p.fullName || p.name || p.playerName;
-        if (!name) continue;
-        const pos = posMap[p.positionId] || posMap[p.position] || p.position || null;
-        const club = p.team?.name || p.teamName || p.club || null;
-        if (pos || club) {
-          players[name] = { position: pos, club };
-          console.log(`  ${name}: ${pos} / ${club}`);
-        }
-      }
+      allResponses.push({ url: response.url(), data: json });
     } catch {}
   });
 
-  console.log(`Henter ${STATS_URL}...`);
-  await page.goto(STATS_URL, { waitUntil: "networkidle", timeout: 60000 });
+  console.log("Henter siden...");
+  await page.goto(STATS_URL, { waitUntil: "networkidle", timeout: 90000 });
+  await page.waitForTimeout(8000);
 
-  // Vent lidt ekstra på dynamisk indhold
-  await page.waitForTimeout(5000);
-
-  // Prøv også at udtrække fra DOM
-  const domPlayers = await page.evaluate(() => {
-    const rows = document.querySelectorAll("tr[data-testid], .player-row, [class*='player']");
-    const result = [];
-    rows.forEach(row => {
-      const name = row.querySelector("[class*='name']")?.textContent?.trim();
-      const pos = row.querySelector("[class*='position']")?.textContent?.trim();
-      const club = row.querySelector("[class*='team'], [class*='club']")?.textContent?.trim();
-      if (name) result.push({ name, pos, club });
-    });
-    return result;
-  });
-
-  console.log(`DOM spillere fundet: ${domPlayers.length}`);
-  for (const p of domPlayers) {
-    if (!players[p.name] && (p.pos || p.club)) {
-      players[p.name] = { position: p.pos, club: p.club };
-    }
+  // Log alle JSON responses for debugging
+  console.log(`\nFangede ${allResponses.length} JSON responses:`);
+  for (const r of allResponses) {
+    const dataStr = JSON.stringify(r.data).slice(0, 200);
+    console.log(`  ${r.url.slice(0, 100)}: ${dataStr}`);
   }
+
+  // Prøv at hente fra window.__NEXT_DATA__ eller lignende
+  const pageData = await page.evaluate(() => {
+    // Prøv Next.js data
+    if (window.__NEXT_DATA__) return JSON.stringify(window.__NEXT_DATA__).slice(0, 5000);
+    // Prøv React query cache
+    const reactQuery = window.__REACT_QUERY_STATE__;
+    if (reactQuery) return JSON.stringify(reactQuery).slice(0, 5000);
+    return null;
+  });
+  
+  if (pageData) {
+    console.log("\nPage data fundet:", pageData.slice(0, 500));
+  }
+
+  // Prøv scroll og vent
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(3000);
+
+  // Tag screenshot til debugging
+  await page.screenshot({ path: "debug.png" });
+  console.log("\nScreenshot gemt som debug.png");
+
+  // Hent HTML
+  const html = await page.content();
+  console.log(`HTML længde: ${html.length}`);
+  
+  // Gem HTML sample
+  fs.writeFileSync("debug.html", html.slice(0, 50000));
+  console.log("HTML sample gemt som debug.html");
 
   await browser.close();
-
-  console.log(`\nTotal spillere med data: ${Object.keys(players).length}`);
-
-  if (Object.keys(players).length === 0) {
-    console.log("Ingen spillere fundet - check om URL er korrekt");
-    process.exit(1);
-  }
-
-  // Hent Firebase spillere og match
-  const snap = await db.ref("players").once("value");
-  const existing = snap.val() || {};
-  const nameToKey = {};
-  for (const [key, p] of Object.entries(existing)) {
-    if (p.fullName) nameToKey[p.fullName] = key;
-  }
-
-  const updates = {};
-  let updated = 0, skipped = 0;
-
-  for (const [name, data] of Object.entries(players)) {
-    const key = nameToKey[name];
-    if (!key) { skipped++; continue; }
-    if (data.position) updates[`players/${key}/position`] = data.position;
-    if (data.club) updates[`players/${key}/club`] = data.club;
-    updated++;
-  }
-
-  console.log(`Opdaterer ${updated} spillere (${skipped} ikke matchet)...`);
-  if (Object.keys(updates).length > 0) {
-    await db.ref().update(updates);
-    console.log("✓ Færdig! Position og klub gemt for alle spillere.");
-  }
-
   process.exit(0);
 }
 
