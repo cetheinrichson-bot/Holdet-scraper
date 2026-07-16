@@ -1,9 +1,8 @@
 /**
- * import-players.mjs
+ * import-players.mjs  (v2 - fixet position-parsing)
  * Importerer spillere fra holdet.dk til Firebase
- * - Henter fullName, growth, position og klub direkte fra siden
- * - Nye spillere tilføjes med owner=Ledig
- * - Eksisterende spillere opdateres med position og klub
+ * - Bruger position.name (engelsk ASCII) i stedet for title (dansk med æøå)
+ * - Begrænser søgning til spillerens egen datablok
  */
 
 import { chromium } from 'playwright';
@@ -17,8 +16,21 @@ const START_URL = 'https://www.holdet.dk/da/fantasy/super-manager-fall-2026';
 const STATS_URL = 'https://nexus-app-fantasy-fargate.holdet.dk/da/super-manager-fall-2026/soccer/statistics';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
 
+// Engelske position-navne (ASCII, ingen unicode-problemer)
 const posMap = {
-  'Målmand':'MÅL','Forsvar':'FOR','Midtbane':'MID','Angreb':'ANG',
+  'goalkeeper': 'MÅL',
+  'keeper':     'MÅL',
+  'defense':    'FOR',
+  'defence':    'FOR',
+  'midfield':   'MID',
+  'attack':     'ANG',
+  'forward':    'ANG',
+  // Danske titler (virker nu efter unicode-decode)
+  'Målmand':    'MÅL',
+  'Keeper':     'MÅL',
+  'Forsvar':    'FOR',
+  'Midtbane':   'MID',
+  'Angreb':     'ANG',
 };
 
 admin.initializeApp({
@@ -32,7 +44,11 @@ function normalizeRSC(s) {
   t = t.replace(/&quot;/g, '"');
   t = t.replace(/\\"/g, '"');
   t = t.replace(/\\u0022/g, '"');
-  t = t.replace(/\\r/g, '').replace(/\\n/g, '\n');
+  // Decode unicode escapes for danske tegn
+  t = t.replace(/\\u00e5/g, 'å').replace(/\\u00c5/g, 'Å');
+  t = t.replace(/\\u00e6/g, 'æ').replace(/\\u00c6/g, 'Æ');
+  t = t.replace(/\\u00f8/g, 'ø').replace(/\\u00d8/g, 'Ø');
+  t = t.replace(/\\u00e9/g, 'é').replace(/\\u00fc/g, 'ü').replace(/\\u00f6/g, 'ö');
   return t;
 }
 
@@ -50,7 +66,7 @@ async function run() {
       const body = await response.text();
       if (body.includes('fullName')) {
         bodies.push(body);
-        console.log(`✓ Response: ${url.slice(0,80)} (${body.length} bytes)`);
+        console.log(`OK Response: ${url.slice(0,80)} (${body.length} bytes)`);
       }
     } catch {}
   });
@@ -72,42 +88,61 @@ async function run() {
 
   await browser.close();
 
-  // Parser alle bodies
+  // Parser: split på fullName så hver blok kun indeholder ÉN spillers data
   const players = new Map();
 
   for (const rawBody of bodies) {
     const s = normalizeRSC(rawBody);
-    const nameRe = /"fullName"\s*:\s*"([^"]+)"/g;
-    let m;
-    while ((m = nameRe.exec(s)) !== null) {
-      const name = m[1].trim();
-      const ctx = s.slice(m.index, m.index + 2000);
 
-      const teamM = /"team"\s*:\s*\{[^}]*"name"\s*:\s*"([^"]+)"/.exec(ctx);
-      const posM  = /"position"\s*:\s*\{[^}]*"title"\s*:\s*"(Målmand|Forsvar|Midtbane|Angreb)"/.exec(ctx);
-      const growthM = /"growth"\s*:\s*(-?\d+)/.exec(ctx);
+    // Find alle fullName positioner
+    const nameMatches = [...s.matchAll(/"fullName"\s*:\s*"([^"]+)"/g)];
 
-      const club     = teamM ? teamM[1] : null;
-      const position = posM  ? posMap[posM[1]] : null;
-      const growth   = growthM ? parseInt(growthM[1]) : 0;
+    for (let i = 0; i < nameMatches.length; i++) {
+      const name = nameMatches[i][1].trim();
+      const blockStart = nameMatches[i].index;
+      // Blokken slutter ved NÆSTE fullName (eller +3000 tegn)
+      const blockEnd = (i + 1 < nameMatches.length)
+        ? nameMatches[i+1].index
+        : Math.min(s.length, blockStart + 3000);
+      const block = s.slice(blockStart, blockEnd);
+
+      // Klub fra team.name
+      const teamM = /"team"\s*:\s*\{[^}]*"name"\s*:\s*"([^"]+)"/.exec(block);
+      // Position: title (dansk: Keeper/Forsvar/Midtbane/Angreb) primært, name (engelsk) som fallback
+      const posTitleM = /"position"\s*:\s*\{[^}]*"title"\s*:\s*"([A-Za-zæøåÆØÅ]+)"/.exec(block);
+      const posNameM  = /"position"\s*:\s*\{[^}]*"name"\s*:\s*"([A-Za-z]+)"/.exec(block);
+
+      const club = teamM ? teamM[1] : null;
+      const position = (posTitleM && posMap[posTitleM[1]]) || (posNameM && posMap[posNameM[1]]) || null;
 
       if (!players.has(name)) {
-        players.set(name, { club, position, growth });
+        players.set(name, { club, position });
       } else {
         const p = players.get(name);
-        if (!p.club && club)         p.club = club;
+        if (!p.club && club) p.club = club;
         if (!p.position && position) p.position = position;
       }
     }
   }
 
   console.log(`\nFandt ${players.size} spillere`);
-  const withPos  = [...players.values()].filter(p => p.position).length;
-  const withClub = [...players.values()].filter(p => p.club).length;
-  console.log(`Med position: ${withPos}/${players.size}`);
-  console.log(`Med klub: ${withClub}/${players.size}`);
+  const byPos = { 'MÅL':0, 'FOR':0, 'MID':0, 'ANG':0, null:0 };
+  for (const [,d] of players) byPos[d.position] = (byPos[d.position]||0) + 1;
+  console.log('Fordeling:', JSON.stringify(byPos));
 
-  // Hent Firebase spillere
+  // Vis målmændene specifikt
+  console.log('\nMålmænd fundet:');
+  for (const [name, d] of players) {
+    if (d.position === 'MÅL') console.log(`  ${name} (${d.club})`);
+  }
+
+  // Tjek specifikke spillere
+  for (const check of ['Andreas Hansen', 'Jesper Hansen', 'Dominik Kotarski', 'Friday Etim']) {
+    const p = players.get(check);
+    console.log(`\nTjek ${check}: ${p ? p.position + ' / ' + p.club : 'IKKE FUNDET'}`);
+  }
+
+  // Opdater Firebase
   const snap = await db.ref('players').once('value');
   const existing = snap.val() || {};
   const nameToKey = {};
@@ -116,38 +151,38 @@ async function run() {
   }
 
   const updates = {};
-  let added = 0, updated = 0, skipped = 0;
+  let added = 0, updated = 0;
 
   for (const [name, data] of players) {
     const safeKey = name.replace(/[.#$\/\[\]]/g, '_');
-
     if (nameToKey[name]) {
-      // Eksisterende spiller - opdater position og klub
       const key = nameToKey[name];
       if (data.position) updates[`players/${key}/position`] = data.position;
       if (data.club)     updates[`players/${key}/club`]     = data.club;
       updated++;
     } else {
-      // Ny spiller - tilføj
       updates[`players/${safeKey}/fullName`]    = name;
       updates[`players/${safeKey}/owner`]       = 'Ledig';
       updates[`players/${safeKey}/totalGrowth`] = 0;
       if (data.position) updates[`players/${safeKey}/position`] = data.position;
       if (data.club)     updates[`players/${safeKey}/club`]     = data.club;
+      // Log ny spiller til playerlog (vises under Historik paa hjemmesiden)
+      updates[`playerlog/${Date.now()}_${safeKey}`] = {
+        player: name,
+        club: data.club || null,
+        position: data.position || null,
+        ts: new Date().toISOString()
+      };
       added++;
       console.log(`+ Ny spiller: ${name} (${data.position||'?'} / ${data.club||'?'})`);
     }
   }
 
-  console.log(`\nNye spillere: ${added}`);
-  console.log(`Opdaterede: ${updated}`);
-  console.log(`Skriver til Firebase...`);
-
+  console.log(`\nNye: ${added}, Opdaterede: ${updated}`);
   if (Object.keys(updates).length > 0) {
     await db.ref().update(updates);
-    console.log('✓ Færdig!');
+    console.log('OK Færdig!');
   }
-
   process.exit(0);
 }
 
