@@ -1,9 +1,13 @@
 /**
- * firebase-sync.cjs v5
+ * firebase-sync.cjs v6
  * 1. Opdater spillervækst fra latest.json (kun inden for aktivt rundevindue)
  * 2. Opdater rundestatusser automatisk
  * 3. Gem rundescores som snapshots når en runde netop er afsluttet
  * 4. Behandl waiver-krav automatisk når runden slutter
+ *
+ * NYT i v6: Overskriver ALDRIG en registreret værdi med 0.
+ * Holdet.dk nulstiller væksten når deres runde slutter. Hvis vores rundevindue
+ * stadig er åbent, ville vi ellers slette hele rundens resultater.
  */
 
 const admin = require("firebase-admin");
@@ -59,6 +63,7 @@ async function sync() {
   if (activeRoundKey && fs.existsSync(dataPath)) {
     const latest = JSON.parse(fs.readFileSync(dataPath, "utf8"));
     console.log(`Aktiv runde: ${rounds[activeRoundKey].label} – opdaterer ${latest.length} spillere`);
+
     const dedup = new Map();
     for (const x of latest) {
       const name = String(x.fullName || "").trim();
@@ -66,22 +71,45 @@ async function sync() {
       if (!name || !Number.isFinite(growth)) continue;
       if (!dedup.has(name.toLowerCase())) dedup.set(name.toLowerCase(), { name, growth });
     }
-    let updated = 0, notFound = 0;
-    for (const { name, growth } of dedup.values()) {
-      const safeKey  = name.replace(/[.#$\/\[\]]/g, "_");
-      const playerKey = players[name] ? name : players[safeKey] ? safeKey : null;
-      if (!playerKey) { notFound++; continue; }
-      updates[`players/${playerKey}/roundGrowth/${activeRoundKey}`] = growth;
-      const existing = players[playerKey].roundGrowth || {};
-      let total = 0;
-      for (const [rk, val] of Object.entries(existing)) {
-        total += rk === activeRoundKey ? growth : (val || 0);
-      }
-      if (!(activeRoundKey in existing)) total += growth;
-      updates[`players/${playerKey}/totalGrowth`] = total;
-      updated++;
+
+    // Sikkerhedstjek: er ALT nul, mens vi allerede har registreret vaerdier?
+    // Saa har holdet.dk nulstillet - spring hele opdateringen over.
+    const allZero = [...dedup.values()].every(p => p.growth === 0);
+    let hadValues = false;
+    for (const p of Object.values(players)) {
+      if (p.roundGrowth && p.roundGrowth[activeRoundKey]) { hadValues = true; break; }
     }
-    console.log(`✓ Opdaterede ${updated} spillere (${notFound} ikke fundet)`);
+    if (allZero && hadValues) {
+      console.log(`⚠ Alle vaerdier er 0, men ${activeRoundKey} har allerede data.`);
+      console.log(`  Holdet.dk har nulstillet - springer spilleropdatering over for at beskytte data.`);
+    } else {
+      let updated = 0, notFound = 0, protectedCount = 0;
+      for (const { name, growth } of dedup.values()) {
+        const safeKey  = name.replace(/[.#$\/\[\]]/g, "_");
+        const playerKey = players[name] ? name : players[safeKey] ? safeKey : null;
+        if (!playerKey) { notFound++; continue; }
+
+        const existing = players[playerKey].roundGrowth || {};
+        const prev = existing[activeRoundKey];
+
+        // BESKYTTELSE: overskriv aldrig en registreret vaerdi med 0
+        if (growth === 0 && prev !== undefined && prev !== 0) {
+          protectedCount++;
+          continue;
+        }
+
+        updates[`players/${playerKey}/roundGrowth/${activeRoundKey}`] = growth;
+
+        let total = 0;
+        for (const [rk, val] of Object.entries(existing)) {
+          total += rk === activeRoundKey ? growth : (val || 0);
+        }
+        if (!(activeRoundKey in existing)) total += growth;
+        updates[`players/${playerKey}/totalGrowth`] = total;
+        updated++;
+      }
+      console.log(`✓ Opdaterede ${updated} spillere (${notFound} ikke fundet, ${protectedCount} beskyttet mod nulstilling)`);
+    }
   } else if (!activeRoundKey) {
     console.log(`Ingen aktiv runde – springer spilleropdatering over`);
   }
@@ -89,14 +117,12 @@ async function sync() {
   // ── 4. Gem rundescores + behandl waivers for netop afsluttede runder ──
   for (const [roundKey, round] of Object.entries(rounds)) {
     const end = new Date(round.end);
-    // Brug waiverEnd til at afgøre hvornår snapshots og waivers behandles
     const waiverEnd = round.waiverEnd ? new Date(round.waiverEnd) : end;
     const msSinceWaiverEnd = now - waiverEnd;
     if (msSinceWaiverEnd < 0 || msSinceWaiverEnd > 2 * 60 * 60 * 1000) continue;
 
     console.log(`\nRunde ${roundKey} waiver-deadline passeret`);
 
-    // Gem rundescores
     for (const [managerName, managerData] of Object.entries(managers)) {
       if (managerData.isAdmin) continue;
       if (managerData.roundScores?.[roundKey] !== undefined) continue;
@@ -112,17 +138,13 @@ async function sync() {
       console.log(`  ✓ ${managerName}: ${roundKey} score = ${score}`);
     }
 
-    // Behandl waiver-krav for denne runde
     const pendingWaivers = Object.entries(waivers)
       .filter(([, w]) => w.round === roundKey && w.status === 'pending')
-      .sort((a, b) => a[1].priority - b[1].priority); // Lavest prioritet nummer = højest prioritet
+      .sort((a, b) => a[1].priority - b[1].priority);
 
     if (pendingWaivers.length > 0) {
       console.log(`\nBehandler ${pendingWaivers.length} waiver-krav for ${roundKey}...`);
-
-      // Hold styr på hvilke spillere der allerede er tildelt i denne kørsel
       const claimedPlayers = new Set();
-      // Hent aktuel player ownership (inkl. ændringer fra updates)
       const currentOwners = {};
       for (const [key, p] of Object.entries(players)) {
         currentOwners[key] = p.owner || 'Ledig';
@@ -130,8 +152,6 @@ async function sync() {
 
       for (const [waiverKey, waiver] of pendingWaivers) {
         const { manager, wantPlayer, dropPlayer } = waiver;
-
-        // Find player keys
         const wantSafe = wantPlayer.replace(/[.#$\/\[\]]/g, "_");
         const wantKey  = players[wantPlayer] ? wantPlayer : players[wantSafe] ? wantSafe : null;
         const dropSafe = dropPlayer.replace(/[.#$\/\[\]]/g, "_");
@@ -143,7 +163,6 @@ async function sync() {
           continue;
         }
 
-        // Tjek om spilleren stadig er ledig og ikke allerede clamet
         const currentOwner = currentOwners[wantKey] || 'Ledig';
         if (currentOwner !== 'Ledig' || claimedPlayers.has(wantKey)) {
           console.log(`  ✗ ${manager}: ${wantPlayer} er ikke ledig (ejes af ${currentOwner})`);
@@ -151,12 +170,10 @@ async function sync() {
           continue;
         }
 
-        // Gennemfør waiver
         claimedPlayers.add(wantKey);
         updates[`players/${wantKey}/owner`] = manager;
         currentOwners[wantKey] = manager;
 
-        // Smid drop-spilleren
         if (dropKey) {
           updates[`players/${dropKey}/owner`] = 'Ledig';
           currentOwners[dropKey] = 'Ledig';
@@ -169,8 +186,7 @@ async function sync() {
         updates[`waivers/${waiverKey}/processedAt`] = now.toISOString();
       }
 
-      // Annullér resterende pending waivers for denne runde
-      for (const [waiverKey, waiver] of pendingWaivers) {
+      for (const [waiverKey] of pendingWaivers) {
         if (!updates[`waivers/${waiverKey}/status`]) {
           updates[`waivers/${waiverKey}/status`] = 'cancelled';
         }
@@ -178,7 +194,6 @@ async function sync() {
     }
   }
 
-  // ── Skriv til Firebase ──
   if (Object.keys(updates).length > 0) {
     await db.ref().update(updates);
     console.log(`\n✓ Skrev ${Object.keys(updates).length} opdateringer til Firebase`);
