@@ -10,8 +10,7 @@ jobs:
         with:
           node-version: 20
       - run: npm install firebase-admin
-      - run: node recover-round.cjs
+      - run: node recover-r1.cjs
         env:
-          RECOVER_ROUND: r1
           FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
