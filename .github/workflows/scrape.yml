@@ -51,7 +51,9 @@ jobs:
         with:
           node-version: '20'
       - name: Install deps
-        run: npm install
+        run: |
+          npm install firebase-admin
+          npm install
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
       - name: Run scraper
@@ -75,8 +77,6 @@ jobs:
             git commit -m "Update data artifacts [skip ci]"
             git push
           fi
-      - name: Install firebase-admin
-        run: npm install firebase-admin --no-save --force
       - name: Sync growth data to Firebase
         if: always()
         env:
