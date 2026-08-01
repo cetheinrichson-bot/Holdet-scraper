@@ -76,7 +76,7 @@ jobs:
             git push
           fi
       - name: Install firebase-admin
-        run: npm install firebase-admin
+        run: npm install firebase-admin --no-save --force
       - name: Sync growth data to Firebase
         if: always()
         env:
