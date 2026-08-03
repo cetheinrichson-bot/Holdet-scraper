@@ -3,4 +3,4 @@ status=200
 contentType=text/html; charset=utf-8
 bodyLen=457840
 statsUrl=https://nexus-app-fantasy-fargate.holdet.dk/da/super-manager-fall-2026/soccer/statistics
-ts=2026-08-02T22:01:42.577Z
+ts=2026-08-03T00:00:37.592Z
