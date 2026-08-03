@@ -897,7 +897,7 @@
   },
   {
     "fullName": "Oscar Buur",
-    "growth": -5000
+    "growth": 0
   },
   {
     "fullName": "Oskar Buur",
@@ -1514,5 +1514,9 @@
   {
     "fullName": "Hamuza Sengooba",
     "growth": -5000
+  },
+  {
+    "fullName": "Colin Rösler",
+    "growth": 0
   }
 ]
