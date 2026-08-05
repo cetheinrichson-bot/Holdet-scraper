@@ -1,8 +1,7 @@
 /**
  * set-kickoffs.cjs
- * Opretter clubKickoffs i Firebase for alle 17 runder.
- * Bruges til at laase spillere naar deres klubs kamp er startet.
- * Klubnavne laeses fra Firebase-spillerne, saa noeglerne matcher praecist.
+ * Opretter clubKickoffs i Firebase - bruges til at laase spillere
+ * naar deres klubs kamp er startet.
  */
 
 const admin = require("firebase-admin");
@@ -17,23 +16,21 @@ admin.initializeApp({
 });
 const db = admin.database();
 
-// Dansk sommertid slutter 25/10-2026 kl 03:00
 function tz(ts) {
   return ts + (new Date(ts + "+02:00") < new Date("2026-10-25T03:00:00+02:00") ? "+02:00" : "+01:00");
 }
 
-// Noegleord -> identificerer klub uanset praecis stavemaade i Firebase
 const KEYS = {
   viborg:      ["viborg"],
   ob:          ["ob", "odense"],
   agf:         ["agf"],
-  brondby:     ["brøndby", "brondby"],
-  sonderjyske: ["sønderjyske", "sonderjyske", "syske"],
+  brondby:     ["br\u00f8ndby", "brondby"],
+  sonderjyske: ["s\u00f8nderjyske", "sonderjyske", "syske"],
   midtjylland: ["midtjylland"],
-  kobenhavn:   ["københav", "koebenhavn", "kobenhavn", "f.c. k", "fck"],
+  kobenhavn:   ["k\u00f8benhav", "koebenhavn", "kobenhavn", "f.c. k", "fck"],
   lyngby:      ["lyngby"],
   horsens:     ["horsens"],
-  nordsjalland:["nordsjælland", "nordsjaelland"],
+  nordsjalland:["nordsj\u00e6lland", "nordsjaelland"],
   randers:     ["randers"],
   silkeborg:   ["silkeborg"],
 };
@@ -78,6 +75,7 @@ const SCHEDULE = {
     ["2026-08-23T18:00:00","viborg","kobenhavn"],
     ["2026-08-24T19:00:00","brondby","silkeborg"],
   ],
+  // r6 rummer de to udskudte kampe 2.+3. sep (som paa holdet.dk)
   r6: [
     ["2026-08-28T19:00:00","horsens","viborg"],
     ["2026-08-30T14:00:00","lyngby","ob"],
@@ -85,10 +83,10 @@ const SCHEDULE = {
     ["2026-08-30T16:00:00","randers","agf"],
     ["2026-08-30T18:00:00","nordsjalland","brondby"],
     ["2026-08-31T19:00:00","kobenhavn","sonderjyske"],
-  ],
-  r7: [
     ["2026-09-02T20:00:00","agf","midtjylland"],
     ["2026-09-03T20:00:00","kobenhavn","nordsjalland"],
+  ],
+  r7: [
     ["2026-09-04T19:00:00","viborg","lyngby"],
     ["2026-09-05T18:00:00","agf","silkeborg"],
     ["2026-09-06T14:00:00","sonderjyske","horsens"],
@@ -96,41 +94,52 @@ const SCHEDULE = {
     ["2026-09-06T18:00:00","brondby","randers"],
     ["2026-09-07T19:00:00","midtjylland","nordsjalland"],
   ],
+  // r8 og r9: officielle kamptider
+  r8: [
+    ["2026-09-11T19:00:00","kobenhavn","horsens"],
+    ["2026-09-13T14:00:00","silkeborg","viborg"],
+    ["2026-09-13T14:00:00","lyngby","sonderjyske"],
+    ["2026-09-13T16:00:00","randers","ob"],
+    ["2026-09-13T18:00:00","nordsjalland","agf"],
+    ["2026-09-14T19:00:00","midtjylland","brondby"],
+  ],
+  r9: [
+    ["2026-09-18T19:00:00","lyngby","silkeborg"],
+    ["2026-09-19T18:00:00","ob","midtjylland"],
+    ["2026-09-20T14:00:00","brondby","kobenhavn"],
+    ["2026-09-20T14:00:00","sonderjyske","randers"],
+    ["2026-09-20T16:00:00","horsens","agf"],
+    ["2026-09-20T18:00:00","viborg","nordsjalland"],
+  ],
 };
 
-// r8-r17: alle kampe kl 16:00 paa den angivne loerdag
-const SAT = { r8:"2026-09-13", r9:"2026-09-20", r10:"2026-10-11", r11:"2026-10-18",
-              r12:"2026-10-25", r13:"2026-11-01", r14:"2026-11-08", r15:"2026-11-22",
-              r16:"2026-11-29", r17:"2026-12-06" };
-const ALL_CLUBS = Object.keys(KEYS);
+// r10-r17: skoen (loerdag kl 16) indtil officielle tider kendes
+const SAT = { r10:"2026-10-10", r11:"2026-10-17", r12:"2026-10-24", r13:"2026-10-31",
+              r14:"2026-11-07", r15:"2026-11-21", r16:"2026-11-28", r17:"2026-12-05" };
+const ALL = Object.keys(KEYS);
 for (const [rk, date] of Object.entries(SAT)) {
   SCHEDULE[rk] = [];
-  for (let i = 0; i < ALL_CLUBS.length; i += 2) {
-    SCHEDULE[rk].push([date + "T16:00:00", ALL_CLUBS[i], ALL_CLUBS[i+1]]);
+  for (let i = 0; i < ALL.length; i += 2) {
+    SCHEDULE[rk].push([date + "T16:00:00", ALL[i], ALL[i+1]]);
   }
 }
 
-function keyFor(clubName) {
-  return "club_" + clubName.replace(/[^a-zA-Z0-9æøåÆØÅ]/g, "_");
+function keyFor(name) {
+  return "club_" + name.replace(/[^a-zA-Z0-9\u00e6\u00f8\u00e5\u00c6\u00d8\u00c5]/g, "_");
 }
 
 async function run() {
   const snap = await db.ref("players").once("value");
   const players = snap.val() || {};
-
-  // Find de faktiske klubnavne i Firebase
   const clubs = [...new Set(Object.values(players).map(p => p.club).filter(Boolean))];
-  console.log("Klubber i Firebase (" + clubs.length + "):");
-  clubs.forEach(c => console.log("   " + c));
 
-  // Map noegleord -> faktisk klubnavn
   const resolved = {};
   for (const [id, words] of Object.entries(KEYS)) {
-    const match = clubs.find(c => words.some(w => c.toLowerCase().includes(w)));
-    if (match) resolved[id] = match;
-    else console.log("ADVARSEL: fandt ingen klub for '" + id + "'");
+    const m = clubs.find(c => words.some(w => c.toLowerCase().includes(w)));
+    if (m) resolved[id] = m;
+    else console.log("ADVARSEL: ingen klub matchede '" + id + "'");
   }
-  console.log("\nMatchede " + Object.keys(resolved).length + " af 12 klubber\n");
+  console.log("Matchede " + Object.keys(resolved).length + " af 12 klubber\n");
 
   const updates = {};
   let total = 0;
@@ -140,7 +149,6 @@ async function run() {
       for (const id of [a, b]) {
         const club = resolved[id];
         if (!club) continue;
-        // Spiller laases ved klubbens FOERSTE kamp i runden
         if (!earliest[club] || ts < earliest[club]) earliest[club] = ts;
       }
     }
@@ -150,17 +158,20 @@ async function run() {
     }
   }
 
-  console.log("Skriver " + total + " kickoff-tidspunkter...");
+  await db.ref("clubKickoffs").remove();
   await db.ref().update(updates);
+  console.log("Skrev " + total + " kickoff-tidspunkter\n");
 
-  // Vis runde 1
-  console.log("\nRunde 1 kickoffs:");
-  Object.entries(updates)
-    .filter(([k]) => k.startsWith("clubKickoffs/r1/"))
-    .sort((a,b) => a[1].localeCompare(b[1]))
-    .forEach(([k,v]) => console.log("   " + k.split("/")[2] + ": " + v));
+  for (const rk of ["r6", "r8"]) {
+    console.log("Runde " + rk.slice(1) + ":");
+    Object.entries(updates)
+      .filter(([k]) => k.startsWith("clubKickoffs/" + rk + "/"))
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .forEach(([k, v]) => console.log("   " + k.split("/")[2].replace("club_", "") + ": " + v.slice(0, 16)));
+    console.log("");
+  }
 
-  console.log("\nOK - faerdig!");
+  console.log("OK - faerdig!");
   process.exit(0);
 }
 
