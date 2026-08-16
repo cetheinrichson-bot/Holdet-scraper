@@ -1,6 +1,6 @@
 foundPlayers=388
 status=200
 contentType=text/html; charset=utf-8
-bodyLen=458637
+bodyLen=458633
 statsUrl=https://nexus-app-fantasy-fargate.holdet.dk/da/super-manager-fall-2026/soccer/statistics
-ts=2026-08-16T01:29:24.628Z
+ts=2026-08-16T03:03:46.573Z
