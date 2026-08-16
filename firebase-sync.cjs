@@ -1,10 +1,11 @@
 /**
- * firebase-sync.cjs v6
+ * firebase-sync.cjs v7
  * 1. Opdater spillervækst fra latest.json (kun inden for aktivt rundevindue)
  * 2. Opdater rundestatusser automatisk
  * 3. Gem rundescores som snapshots når en runde netop er afsluttet
  * 4. Behandl waiver-krav automatisk når runden slutter
  *
+ * NYT i v7: Bruger standardopstilling hvis manageren ikke har gemt hold.
  * NYT i v6: Overskriver ALDRIG en registreret værdi med 0.
  * Holdet.dk nulstiller væksten når deres runde slutter. Hvis vores rundevindue
  * stadig er åbent, ville vi ellers slette hele rundens resultater.
@@ -128,14 +129,41 @@ async function sync() {
       if (managerData.roundScores?.[roundKey] !== undefined) continue;
       const starters = managerData.lineup?.[roundKey]?.starters || [];
       let score = 0;
-      for (const playerName of starters) {
-        const safeKey = playerName.replace(/[.#$\/\[\]]/g, "_");
-        const playerKey = players[playerName] ? playerName : players[safeKey] ? safeKey : null;
-        if (!playerKey) continue;
-        score += players[playerKey]?.roundGrowth?.[roundKey] || 0;
+      let kilde = "gemt opstilling";
+
+      if (starters.length > 0) {
+        for (const playerName of starters) {
+          const safeKey = playerName.replace(/[.#$\/\[\]]/g, "_");
+          const playerKey = players[playerName] ? playerName : players[safeKey] ? safeKey : null;
+          if (!playerKey) continue;
+          score += players[playerKey]?.roundGrowth?.[roundKey] || 0;
+        }
+      } else {
+        // INGEN gemt opstilling: brug standardopstillingen (samme logik som hjemmesiden).
+        // Ellers ville manageren faa gemt 0 point permanent.
+        const FORMATIONS = {
+          "4-3-3":[4,3,3], "4-4-2":[4,4,2], "4-5-1":[4,5,1],
+          "3-4-3":[3,4,3], "3-5-2":[3,5,2], "5-4-1":[5,4,1], "5-3-2":[5,3,2],
+        };
+        const formation = managerData.lineup?.[roundKey]?.formation || "4-3-3";
+        const [d, m, a] = FORMATIONS[formation] || FORMATIONS["4-3-3"];
+        const need = { "MÅL":1, "FOR":d, "MID":m, "ANG":a };
+        const byPos = { "MÅL":[], "FOR":[], "MID":[], "ANG":[] };
+        for (const p of Object.values(players)) {
+          if (p.owner === managerName && byPos[p.position]) byPos[p.position].push(p);
+        }
+        let n = 0;
+        for (const pos of Object.keys(need)) {
+          for (const p of byPos[pos].slice(0, need[pos])) {
+            score += p.roundGrowth?.[roundKey] || 0;
+            n++;
+          }
+        }
+        kilde = `standardopstilling (${n} spillere, ${formation})`;
       }
+
       updates[`managers/${managerName}/roundScores/${roundKey}`] = score;
-      console.log(`  ✓ ${managerName}: ${roundKey} score = ${score}`);
+      console.log(`  ✓ ${managerName}: ${roundKey} score = ${score}  [${kilde}]`);
     }
 
     const pendingWaivers = Object.entries(waivers)
