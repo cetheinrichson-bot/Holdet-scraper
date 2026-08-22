@@ -1,7 +1,7 @@
 /**
  * set-kickoffs.cjs
- * Opretter clubKickoffs i Firebase - bruges til at laase spillere
- * naar deres klubs kamp er startet.
+ * Opretter clubKickoffs - bruges til at laase spillere naar klubbens kamp er startet.
+ * r1-r9 er officielle tider. r10-r17 er skoen indtil de offentliggoeres.
  */
 
 const admin = require("firebase-admin");
@@ -24,18 +24,17 @@ const KEYS = {
   viborg:      ["viborg"],
   ob:          ["ob", "odense"],
   agf:         ["agf"],
-  brondby:     ["br\u00f8ndby", "brondby"],
-  sonderjyske: ["s\u00f8nderjyske", "sonderjyske", "syske"],
+  brondby:     ["brøndby", "brondby"],
+  sonderjyske: ["sønderjyske", "sonderjyske", "syske"],
   midtjylland: ["midtjylland"],
-  kobenhavn:   ["k\u00f8benhav", "koebenhavn", "kobenhavn", "f.c. k", "fck"],
+  kobenhavn:   ["københav", "koebenhavn", "kobenhavn", "f.c. k", "fck"],
   lyngby:      ["lyngby"],
   horsens:     ["horsens"],
-  nordsjalland:["nordsj\u00e6lland", "nordsjaelland"],
+  nordsjalland:["nordsjælland", "nordsjaelland"],
   randers:     ["randers"],
   silkeborg:   ["silkeborg"],
 };
 
-// Kampprogram: runde -> [ [tidspunkt, klub1, klub2], ... ]
 const SCHEDULE = {
   r1: [
     ["2026-07-24T19:00:00","viborg","ob"],
@@ -68,14 +67,13 @@ const SCHEDULE = {
     ["2026-08-17T19:00:00","brondby","sonderjyske"],
   ],
   r5: [
-    ["2026-08-21T19:00:00","agf","ob"],
     ["2026-08-23T12:00:00","sonderjyske","nordsjalland"],
-    ["2026-08-23T14:00:00","midtjylland","randers"],
+    ["2026-08-23T14:00:00","agf","ob"],
+    ["2026-08-23T14:05:00","midtjylland","randers"],
     ["2026-08-23T16:00:00","horsens","lyngby"],
     ["2026-08-23T18:00:00","viborg","kobenhavn"],
     ["2026-08-24T19:00:00","brondby","silkeborg"],
   ],
-  // r6 rummer de to udskudte kampe 2.+3. sep (som paa holdet.dk)
   r6: [
     ["2026-08-28T19:00:00","horsens","viborg"],
     ["2026-08-30T14:00:00","lyngby","ob"],
@@ -94,11 +92,10 @@ const SCHEDULE = {
     ["2026-09-06T18:00:00","brondby","randers"],
     ["2026-09-07T19:00:00","midtjylland","nordsjalland"],
   ],
-  // r8 og r9: officielle kamptider
   r8: [
     ["2026-09-11T19:00:00","kobenhavn","horsens"],
-    ["2026-09-13T14:00:00","silkeborg","viborg"],
     ["2026-09-13T14:00:00","lyngby","sonderjyske"],
+    ["2026-09-13T14:00:00","silkeborg","viborg"],
     ["2026-09-13T16:00:00","randers","ob"],
     ["2026-09-13T18:00:00","nordsjalland","agf"],
     ["2026-09-14T19:00:00","midtjylland","brondby"],
@@ -106,11 +103,11 @@ const SCHEDULE = {
   r9: [
     ["2026-09-18T19:00:00","lyngby","silkeborg"],
     ["2026-09-19T18:00:00","ob","midtjylland"],
-    ["2026-09-20T14:00:00","brondby","kobenhavn"],
     ["2026-09-20T14:00:00","sonderjyske","randers"],
+    ["2026-09-20T14:00:00","brondby","kobenhavn"],
     ["2026-09-20T16:00:00","horsens","agf"],
     ["2026-09-20T18:00:00","viborg","nordsjalland"],
-  ],
+  ]
 };
 
 // r10-r17: skoen (loerdag kl 16) indtil officielle tider kendes
@@ -125,7 +122,7 @@ for (const [rk, date] of Object.entries(SAT)) {
 }
 
 function keyFor(name) {
-  return "club_" + name.replace(/[^a-zA-Z0-9\u00e6\u00f8\u00e5\u00c6\u00d8\u00c5]/g, "_");
+  return "club_" + name.replace(/[^a-zA-Z0-9æøåÆØÅ]/g, "_");
 }
 
 async function run() {
@@ -162,15 +159,14 @@ async function run() {
   await db.ref().update(updates);
   console.log("Skrev " + total + " kickoff-tidspunkter\n");
 
-  for (const rk of ["r6", "r8"]) {
+  for (const rk of ["r5", "r6"]) {
     console.log("Runde " + rk.slice(1) + ":");
     Object.entries(updates)
       .filter(([k]) => k.startsWith("clubKickoffs/" + rk + "/"))
       .sort((a, b) => a[1].localeCompare(b[1]))
-      .forEach(([k, v]) => console.log("   " + k.split("/")[2].replace("club_", "") + ": " + v.slice(0, 16)));
+      .forEach(([k, v]) => console.log("   " + k.split("/")[2].replace("club_", "").padEnd(18) + v.slice(0, 16)));
     console.log("");
   }
-
   console.log("OK - faerdig!");
   process.exit(0);
 }
