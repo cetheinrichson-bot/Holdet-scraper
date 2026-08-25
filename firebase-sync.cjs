@@ -1,10 +1,13 @@
 /**
- * firebase-sync.cjs v7
+ * firebase-sync.cjs v9
  * 1. Opdater spillervækst fra latest.json (kun inden for aktivt rundevindue)
  * 2. Opdater rundestatusser automatisk
  * 3. Gem rundescores som snapshots når en runde netop er afsluttet
  * 4. Behandl waiver-krav automatisk når runden slutter
  *
+ * NYT i v9: Waivers koeres NFL-stil i omgange, praecis som paa hjemmesiden,
+ *            med prioritet = omvendt ligastilling.
+ * NYT i v8: Samme spiller kan kun smides een gang pr. waiver-koersel.
  * NYT i v7: Bruger standardopstilling hvis manageren ikke har gemt hold.
  * NYT i v6: Overskriver ALDRIG en registreret værdi med 0.
  * Holdet.dk nulstiller væksten når deres runde slutter. Hvis vores rundevindue
@@ -167,56 +170,114 @@ async function sync() {
     }
 
     const pendingWaivers = Object.entries(waivers)
-      .filter(([, w]) => w.round === roundKey && w.status === 'pending')
-      .sort((a, b) => a[1].priority - b[1].priority);
+      .filter(([, w]) => w.round === roundKey && w.status === 'pending');
 
     if (pendingWaivers.length > 0) {
       console.log(`\nBehandler ${pendingWaivers.length} waiver-krav for ${roundKey}...`);
+
+      // ── Prioritet = OMVENDT ligastilling (samme beregning som hjemmesiden) ──
+      const mgrs = Object.keys(managers).filter(m => !managers[m].isAdmin);
+      const ligaPts = {};
+      mgrs.forEach(m => ligaPts[m] = 0);
+      Object.keys(rounds)
+        .sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)))
+        .forEach(rk => {
+          if (rounds[rk].status === 'upcoming') return;
+          const sc = mgrs.map(m => ({
+            m,
+            s: managers[m]?.roundScores?.[rk] !== undefined
+                 ? managers[m].roundScores[rk]
+                 : 0
+          })).sort((a, b) => b.s - a.s);
+          sc.forEach(({ m }, i) => { ligaPts[m] += (mgrs.length - i); });
+        });
+      const totalFor = m => Object.values(players)
+        .filter(p => p.owner === m)
+        .reduce((a, p) => a + (p.totalGrowth || 0), 0);
+      const standing = [...mgrs].sort((a, b) =>
+        (ligaPts[b] - ligaPts[a]) || (totalFor(b) - totalFor(a)));
+      const priorityOrder = [...standing].reverse();
+
+      console.log(`  Stilling : ${standing.join(' > ')}`);
+      console.log(`  Prioritet: ${priorityOrder.join(' > ')}\n`);
+
+      // ── Koe pr. manager, i den raekkefoelge kravene blev indsendt ──
+      const byMgr = {};
+      for (const [k, w] of pendingWaivers) {
+        (byMgr[w.manager] = byMgr[w.manager] || []).push([k, w]);
+      }
+      for (const m of Object.keys(byMgr)) {
+        byMgr[m].sort((a, b) => (a[1].priority || 99) - (b[1].priority || 99));
+      }
+
       const claimedPlayers = new Set();
+      const droppedPlayers = new Set();
       const currentOwners = {};
       for (const [key, p] of Object.entries(players)) {
         currentOwners[key] = p.owner || 'Ledig';
       }
 
-      for (const [waiverKey, waiver] of pendingWaivers) {
-        const { manager, wantPlayer, dropPlayer } = waiver;
-        const wantSafe = wantPlayer.replace(/[.#$\/\[\]]/g, "_");
-        const wantKey  = players[wantPlayer] ? wantPlayer : players[wantSafe] ? wantSafe : null;
-        const dropSafe = dropPlayer.replace(/[.#$\/\[\]]/g, "_");
-        const dropKey  = players[dropPlayer] ? dropPlayer : players[dropSafe] ? dropSafe : null;
+      // ── NFL-stil: hver manager faar HOEJST eet krav igennem pr. omgang ──
+      for (let omgang = 0; omgang < 10; omgang++) {
+        let nogenFik = false;
 
-        if (!wantKey) {
-          console.log(`  ✗ ${manager}: ${wantPlayer} ikke fundet i databasen`);
-          updates[`waivers/${waiverKey}/status`] = 'failed';
-          continue;
+        for (const manager of priorityOrder) {
+          const q = byMgr[manager];
+          if (!q || !q.length) continue;
+
+          while (q.length) {
+            const [waiverKey, waiver] = q[0];
+            const wantPlayer = waiver.wantPlayer || waiver.playerIn;
+            const dropPlayer = waiver.dropPlayer || waiver.playerOut;
+
+            const wantSafe = String(wantPlayer).replace(/[.#$\/\[\]]/g, "_");
+            const wantKey  = players[wantPlayer] ? wantPlayer : players[wantSafe] ? wantSafe : null;
+            const dropSafe = dropPlayer ? String(dropPlayer).replace(/[.#$\/\[\]]/g, "_") : null;
+            const dropKey  = dropPlayer
+              ? (players[dropPlayer] ? dropPlayer : players[dropSafe] ? dropSafe : null)
+              : null;
+
+            if (!wantKey) {
+              console.log(`  ✗ ${manager}: ${wantPlayer} findes ikke`);
+              updates[`waivers/${waiverKey}/status`] = 'failed';
+              q.shift(); continue;
+            }
+            if (dropKey && droppedPlayers.has(dropKey)) {
+              console.log(`  ✗ ${manager}: ${dropPlayer} er allerede smidt`);
+              updates[`waivers/${waiverKey}/status`] = 'failed_duplicate_drop';
+              q.shift(); continue;
+            }
+            const owner = currentOwners[wantKey] || 'Ledig';
+            if (owner !== 'Ledig' || claimedPlayers.has(wantKey)) {
+              console.log(`  ✗ ${manager}: ${wantPlayer} ikke ledig`);
+              updates[`waivers/${waiverKey}/status`] = 'failed_unavailable';
+              q.shift(); continue;
+            }
+
+            claimedPlayers.add(wantKey);
+            if (dropKey) droppedPlayers.add(dropKey);
+            updates[`players/${wantKey}/owner`] = manager;
+            currentOwners[wantKey] = manager;
+            if (dropKey) {
+              updates[`players/${dropKey}/owner`] = 'Ledig';
+              currentOwners[dropKey] = 'Ledig';
+            }
+            updates[`waivers/${waiverKey}/status`] = 'completed';
+            updates[`waivers/${waiverKey}/processedAt`] = now.toISOString();
+            console.log(`  ✓ ${manager} (omgang ${omgang + 1}): henter ${wantPlayer}` +
+                        (dropPlayer ? `, smider ${dropPlayer}` : ''));
+            q.shift(); nogenFik = true;
+            break;   // naeste manager faar tur
+          }
         }
-
-        const currentOwner = currentOwners[wantKey] || 'Ledig';
-        if (currentOwner !== 'Ledig' || claimedPlayers.has(wantKey)) {
-          console.log(`  ✗ ${manager}: ${wantPlayer} er ikke ledig (ejes af ${currentOwner})`);
-          updates[`waivers/${waiverKey}/status`] = 'failed_unavailable';
-          continue;
-        }
-
-        claimedPlayers.add(wantKey);
-        updates[`players/${wantKey}/owner`] = manager;
-        currentOwners[wantKey] = manager;
-
-        if (dropKey) {
-          updates[`players/${dropKey}/owner`] = 'Ledig';
-          currentOwners[dropKey] = 'Ledig';
-          console.log(`  ✓ ${manager}: henter ${wantPlayer}, smider ${dropPlayer}`);
-        } else {
-          console.log(`  ✓ ${manager}: henter ${wantPlayer} (drop-spiller ikke fundet)`);
-        }
-
-        updates[`waivers/${waiverKey}/status`] = 'completed';
-        updates[`waivers/${waiverKey}/processedAt`] = now.toISOString();
+        if (!nogenFik) break;
       }
 
-      for (const [waiverKey] of pendingWaivers) {
-        if (!updates[`waivers/${waiverKey}/status`]) {
-          updates[`waivers/${waiverKey}/status`] = 'cancelled';
+      for (const q of Object.values(byMgr)) {
+        for (const [waiverKey] of q) {
+          if (!updates[`waivers/${waiverKey}/status`]) {
+            updates[`waivers/${waiverKey}/status`] = 'cancelled';
+          }
         }
       }
     }
