@@ -1077,7 +1077,7 @@
   },
   {
     "fullName": "Simon Stüker",
-    "growth": -5000
+    "growth": -10000
   },
   {
     "fullName": "Simon Wæver",
@@ -1581,6 +1581,18 @@
   },
   {
     "fullName": "Anton Mandrup",
+    "growth": -5000
+  },
+  {
+    "fullName": "Kristian Bøgild",
+    "growth": 22000
+  },
+  {
+    "fullName": "Axel Henriksson",
+    "growth": -18000
+  },
+  {
+    "fullName": "Matej Tuka",
     "growth": -5000
   }
 ]
