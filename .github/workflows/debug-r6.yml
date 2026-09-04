@@ -1,0 +1,21 @@
+name: Debug R6
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install firebase-admin
+        run: |
+          rm -rf node_modules/@firebase node_modules/firebase-admin
+          npm install firebase-admin@12.7.0 --no-save
+          node -e "require('firebase-admin'); console.log('firebase-admin OK')"
+      - run: node debug-r6.cjs
+        env:
+          FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
