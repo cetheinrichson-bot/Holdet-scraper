@@ -1,10 +1,15 @@
 /**
- * firebase-sync.cjs v9
+ * firebase-sync.cjs v11
  * 1. Opdater spillervækst fra latest.json (kun inden for aktivt rundevindue)
  * 2. Opdater rundestatusser automatisk
  * 3. Gem rundescores som snapshots når en runde netop er afsluttet
  * 4. Behandl waiver-krav automatisk når runden slutter
  *
+ * NYT i v11: Opdager ogsaa naar holdet.dk endnu ikke har skiftet runde,
+ *            saa forrige rundes point ikke kopieres ind i den nye.
+ * NYT i v10: Data skrives til den senest startede runde - ikke kun inden for
+ *            et haardt tidsvindue. En forsinket scrape gaar ikke laengere tabt.
+ *            Nulstilling opdages nu ogsaa naar summen kollapser.
  * NYT i v9: Waivers koeres NFL-stil i omgange, praecis som paa hjemmesiden,
  *            med prioritet = omvendt ligastilling.
  * NYT i v8: Samme spiller kan kun smides een gang pr. waiver-koersel.
@@ -54,19 +59,43 @@ async function sync() {
     }
   }
 
-  // ── 2. Find aktiv runde ──
-  let activeRoundKey = null;
-  for (const [key, round] of Object.entries(rounds)) {
-    const start = new Date(round.start);
-    const end   = new Date(round.end);
-    if (now >= start && now <= end) { activeRoundKey = key; break; }
+  // ── 2. Find den runde data hoerer til ──
+  // Vi bruger IKKE et haardt start/end-vindue. En scrape der kommer for sent
+  // (GitHub udskyder ofte cron) ville ellers blive smidt vaek i stilhed.
+  // I stedet: den senest STARTEDE runde, gyldig indtil naeste runde begynder.
+  const sorteret = Object.entries(rounds)
+    .sort((a, b) => new Date(a[1].start) - new Date(b[1].start));
+
+  let targetRound = null, aarsag = "";
+  if (process.env.FORCE_ROUND) {
+    targetRound = process.env.FORCE_ROUND;
+    aarsag = "tvunget via FORCE_ROUND";
+  } else {
+    let seneste = null;
+    for (const [k, r] of sorteret) if (new Date(r.start) <= now) seneste = [k, r];
+    if (!seneste) {
+      aarsag = "saesonen er ikke startet endnu";
+    } else {
+      const naeste = sorteret.find(([, r]) => new Date(r.start) > now);
+      const graense = naeste ? new Date(naeste[1].start) : null;
+      if (graense && now >= graense) {
+        aarsag = "naeste runde er begyndt";
+      } else {
+        targetRound = seneste[0];
+        const slut = new Date(seneste[1].end);
+        aarsag = now <= slut
+          ? "runden er i gang"
+          : "runden er slut, men naeste er ikke begyndt - efterslaeb hentes stadig";
+      }
+    }
   }
+
+  console.log(`Maalrunde: ${targetRound || "INGEN"} (${aarsag})`);
 
   // ── 3. Opdater spillervækst ──
   const dataPath = path.join(__dirname, "data", "latest.json");
-  if (activeRoundKey && fs.existsSync(dataPath)) {
+  if (targetRound && fs.existsSync(dataPath)) {
     const latest = JSON.parse(fs.readFileSync(dataPath, "utf8"));
-    console.log(`Aktiv runde: ${rounds[activeRoundKey].label} – opdaterer ${latest.length} spillere`);
 
     const dedup = new Map();
     for (const x of latest) {
@@ -76,46 +105,84 @@ async function sync() {
       if (!dedup.has(name.toLowerCase())) dedup.set(name.toLowerCase(), { name, growth });
     }
 
-    // Sikkerhedstjek: er ALT nul, mens vi allerede har registreret vaerdier?
-    // Saa har holdet.dk nulstillet - spring hele opdateringen over.
-    const allZero = [...dedup.values()].every(p => p.growth === 0);
-    let hadValues = false;
-    for (const p of Object.values(players)) {
-      if (p.roundGrowth && p.roundGrowth[activeRoundKey]) { hadValues = true; break; }
+    // ── Nulstillings-detektion ──
+    // Holdet.dk nulstiller vaeksten naar DERES runde slutter. Skriver vi videre
+    // paa det tidspunkt, slettes rundens resultater. Vi opdager det paa to maader:
+    //   a) alt er nul, men vi har allerede data
+    //   b) den samlede stoerrelse er kollapset (under 25% af det gemte)
+    let gemtSum = 0, nySum = 0;
+    for (const p of Object.values(players)) gemtSum += Math.abs(p.roundGrowth?.[targetRound] || 0);
+    for (const { growth } of dedup.values()) nySum += Math.abs(growth);
+
+    const altNul = [...dedup.values()].every(p => p.growth === 0);
+    const kollaps = gemtSum > 0 && nySum < gemtSum * 0.25;
+
+    // ── Overslaebs-detektion ──
+    // Modsatte problem: hvis VORES runde starter foer holdet.dk skifter,
+    // viser de stadig forrige rundes tal. Uden dette tjek ville vi kopiere
+    // de gamle point ind i den nye runde som om de var nye.
+    let overslaeb = false;
+    if (gemtSum === 0) {
+      const idx = sorteret.findIndex(([k]) => k === targetRound);
+      const forrige = idx > 0 ? sorteret[idx - 1][0] : null;
+      if (forrige) {
+        let ens = 0, talt = 0;
+        for (const { name, growth } of dedup.values()) {
+          const sk = name.replace(/[.#$\/\[\]]/g, "_");
+          const pk = players[name] ? name : players[sk] ? sk : null;
+          if (!pk) continue;
+          const fv = players[pk].roundGrowth?.[forrige];
+          if (fv === undefined || fv === 0) continue;
+          talt++;
+          if (fv === growth) ens++;
+        }
+        if (talt >= 50 && ens / talt > 0.8) {
+          overslaeb = true;
+          console.log(`⚠ Springer over: ${Math.round(ens/talt*100)}% af vaerdierne er identiske med ${forrige}.`);
+          console.log(`  Holdet.dk har endnu ikke skiftet runde - undgaar at kopiere gamle point til ${targetRound}.`);
+        }
+      }
     }
-    if (allZero && hadValues) {
-      console.log(`⚠ Alle vaerdier er 0, men ${activeRoundKey} har allerede data.`);
-      console.log(`  Holdet.dk har nulstillet - springer spilleropdatering over for at beskytte data.`);
+
+    if (overslaeb) {
+      // intet skrives
+    } else if (gemtSum > 0 && (altNul || kollaps)) {
+      console.log(`⚠ Springer over: vaerdierne ser nulstillede ud.`);
+      console.log(`  gemt sum: ${Math.round(gemtSum/1000)}k, ny sum: ${Math.round(nySum/1000)}k`);
+      console.log(`  Holdet.dk har sandsynligvis skiftet runde - beskytter ${targetRound}.`);
     } else {
-      let updated = 0, notFound = 0, protectedCount = 0;
+      let updated = 0, notFound = 0, protectedCount = 0, uaendret = 0;
       for (const { name, growth } of dedup.values()) {
         const safeKey  = name.replace(/[.#$\/\[\]]/g, "_");
         const playerKey = players[name] ? name : players[safeKey] ? safeKey : null;
         if (!playerKey) { notFound++; continue; }
 
         const existing = players[playerKey].roundGrowth || {};
-        const prev = existing[activeRoundKey];
+        const prev = existing[targetRound];
 
-        // BESKYTTELSE: overskriv aldrig en registreret vaerdi med 0
-        if (growth === 0 && prev !== undefined && prev !== 0) {
-          protectedCount++;
-          continue;
-        }
+        if (growth === 0 && prev !== undefined && prev !== 0) { protectedCount++; continue; }
+        if (prev === growth) { uaendret++; continue; }
 
-        updates[`players/${playerKey}/roundGrowth/${activeRoundKey}`] = growth;
+        updates[`players/${playerKey}/roundGrowth/${targetRound}`] = growth;
 
         let total = 0;
         for (const [rk, val] of Object.entries(existing)) {
-          total += rk === activeRoundKey ? growth : (val || 0);
+          total += rk === targetRound ? growth : (val || 0);
         }
-        if (!(activeRoundKey in existing)) total += growth;
+        if (!(targetRound in existing)) total += growth;
         updates[`players/${playerKey}/totalGrowth`] = total;
         updated++;
       }
-      console.log(`✓ Opdaterede ${updated} spillere (${notFound} ikke fundet, ${protectedCount} beskyttet mod nulstilling)`);
+      console.log(`✓ ${targetRound}: ${updated} opdateret, ${uaendret} uaendret, ` +
+                  `${protectedCount} beskyttet, ${notFound} ukendt`);
+      if (updated === 0 && uaendret === 0) {
+        console.log(`⚠ ADVARSEL: intet blev skrevet - undersoeg om latest.json er tom.`);
+      }
     }
-  } else if (!activeRoundKey) {
-    console.log(`Ingen aktiv runde – springer spilleropdatering over`);
+  } else if (!targetRound) {
+    console.log(`Ingen maalrunde - springer spilleropdatering over`);
+  } else {
+    console.log(`⚠ data/latest.json findes ikke - scraperen har ikke koert`);
   }
 
   // ── 4. Gem rundescores + behandl waivers for netop afsluttede runder ──
