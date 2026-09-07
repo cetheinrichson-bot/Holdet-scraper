@@ -2,9 +2,18 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 
-// SKIFT disse to, hvis du vil over på Spring 2026
-const STATS_URL = 'https://nexus-app-fantasy-fargate.holdet.dk/da/super-manager-fall-2026/soccer/statistics';
-const START_URL = 'https://www.holdet.dk/da/fantasy/super-manager-fall-2026';
+// Holdet.dk har flyttet statistiksiden mindst een gang.
+// Vi proever derfor flere adresser og bruger den foerste der giver data.
+const STATS_URLS = [
+  'https://www.holdet.dk/da/season/super-manager-fall-2026/soccer/statistics',
+  'https://nexus-app-fantasy.holdet.dk/da/super-manager-fall-2026/soccer/statistics',
+  'https://nexus-app-fantasy-fargate.holdet.dk/da/super-manager-fall-2026/soccer/statistics',
+  'https://www.holdet.dk/da/super-manager-fall-2026/soccer/statistics',
+];
+const START_URLS = [
+  'https://www.holdet.dk/da/season/super-manager-fall-2026',
+  'https://www.holdet.dk/da/fantasy/super-manager-fall-2026',
+];
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
@@ -17,7 +26,6 @@ function ensureDataDirs() {
   return { dataDir, sampDir };
 }
 
-// === Normalisering + robust parser ===
 function normalizeRSC(s) {
   let t = String(s || '');
   t = t.replace(/&quot;/g, '"');
@@ -30,41 +38,42 @@ function normalizeRSC(s) {
 function extractPlayersFromText(raw) {
   const s = normalizeRSC(raw);
   const out = [];
-  const push = (n, g) => { const name=(n||'').trim(); const gr=Number(g); if(name && Number.isFinite(gr)) out.push({ fullName:name, growth:gr }); };
+  const push = (n, g) => {
+    const name = (n || '').trim();
+    const gr = Number(g);
+    if (name && Number.isFinite(gr)) out.push({ fullName: name, growth: gr });
+  };
   let m;
 
-  // person.fullName ... growth
   {
     const re = /"person"\s*:\s*\{[\s\S]*?"fullName"\s*:\s*"([^"]+)"[\s\S]{1,50000}?"growth"\s*:\s*(-?\d+)/g;
     while ((m = re.exec(s)) !== null) push(m[1], m[2]);
   }
-  // growth ... person.fullName
   {
     const re = /"growth"\s*:\s*(-?\d+)[\s\S]{1,50000}?"person"\s*:\s*\{[\s\S]*?"fullName"\s*:\s*"([^"]+)"/g;
     while ((m = re.exec(s)) !== null) push(m[2], m[1]);
   }
-  // fullName ... growth (uden person)
   {
     const re = /"fullName"\s*:\s*"([^"]+)"[\s\S]{1,50000}?"growth"\s*:\s*(-?\d+)/g;
     while ((m = re.exec(s)) !== null) push(m[1], m[2]);
   }
-  // growth ... fullName (uden person)
   {
     const re = /"growth"\s*:\s*(-?\d+)[\s\S]{1,50000}?"fullName"\s*:\s*"([^"]+)"/g;
     while ((m = re.exec(s)) !== null) push(m[2], m[1]);
   }
-  // rows-fallback
   {
     const rowsMatch = /"rows"\s*:\s*\[([\s\S]*?)\]/.exec(s);
     if (rowsMatch && rowsMatch[1]) {
-      const block = rowsMatch[1];
       const itemRe = /"fullName"\s*:\s*"([^"]+)"[\s\S]{1,2000}?"growth"\s*:\s*(-?\d+)/g;
-      while ((m = itemRe.exec(block)) !== null) push(m[1], m[2]);
+      while ((m = itemRe.exec(rowsMatch[1])) !== null) push(m[1], m[2]);
     }
   }
 
   const seen = new Map();
-  for (const p of out) { const k = p.fullName.toLowerCase(); if(!seen.has(k)) seen.set(k, p); }
+  for (const p of out) {
+    const k = p.fullName.toLowerCase();
+    if (!seen.has(k)) seen.set(k, p);
+  }
   return Array.from(seen.values());
 }
 
@@ -77,79 +86,88 @@ async function run() {
   const ctx = await browser.newContext({ userAgent: UA });
   const page = await ctx.newPage();
 
-  try { await page.goto(START_URL, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch {}
+  // Besoeg startsiden for at faa cookies
+  let startOk = null;
+  for (const u of START_URLS) {
+    try {
+      const r = await page.goto(u, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      if (r && r.status() < 400) { startOk = u; break; }
+    } catch {}
+  }
+  console.log('Startside: ' + (startOk || 'ingen svarede'));
 
   const headers = {
     'User-Agent': UA,
     'Accept': '*/*',
     'Accept-Language': 'da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Referer': START_URL
+    'Referer': startOk || START_URLS[0],
   };
 
-  let status = -1, ct = '', body = '';
-  try {
-    const resp = await page.request.get(STATS_URL, { headers });
-    status = resp.status();
-    const hs = resp.headers();
-    ct = (hs['content-type'] || hs['Content-Type'] || '').toLowerCase();
-    body = await resp.text();
-  } catch (e) {
-    fs.writeFileSync(debugPath, `ERROR=request_failed\nurl=${STATS_URL}\nmsg=${String(e)}\nts=${new Date().toISOString()}`);
-    fs.writeFileSync(path.join(dataDir, 'changed.flag'), '0');
-    await browser.close();
-    process.exit(1);
+  // Proev hver adresse indtil vi faar spillerdata
+  let players = [], brugtUrl = null, sidsteStatus = -1, sidsteCt = '', body = '';
+  const forsog = [];
+
+  for (const url of STATS_URLS) {
+    for (const accept of ['*/*', 'text/x-component']) {
+      try {
+        const resp = await page.request.get(url, { headers: { ...headers, Accept: accept } });
+        const st = resp.status();
+        const b  = await resp.text();
+        const found = b ? extractPlayersFromText(b) : [];
+        forsog.push(`${url} [${accept}] -> status=${st} bytes=${b.length} spillere=${found.length}`);
+        console.log(`  ${st}  ${found.length.toString().padStart(4)} spillere  ${url}`);
+        if (found.length > players.length) {
+          players = found; brugtUrl = url; sidsteStatus = st;
+          sidsteCt = (resp.headers()['content-type'] || '').toLowerCase();
+          body = b;
+        }
+        if (players.length > 0) break;
+      } catch (e) {
+        forsog.push(`${url} [${accept}] -> FEJL ${String(e).slice(0, 120)}`);
+      }
+    }
+    if (players.length > 0) break;
   }
 
-  // Ekstra forsøg hvis første svar ikke afslører growth
-  if (!/"growth":-?\d+/.test(body)) {
-    try {
-      const u = new URL(STATS_URL); u.searchParams.set('_', Date.now().toString());
-      const resp2 = await page.request.get(u.toString(), { headers });
-      status = resp2.status();
-      const hs2 = resp2.headers();
-      ct = (hs2['content-type'] || hs2['Content-Type'] || '').toLowerCase();
-      body = await resp2.text();
-    } catch {}
-  }
-  if (!/"growth":-?\d+/.test(body)) {
-    try {
-      const rscHeaders = { ...headers, 'Accept': 'text/x-component' };
-      const resp3 = await page.request.get(STATS_URL, { headers: rscHeaders });
-      status = resp3.status();
-      const hs3 = resp3.headers();
-      ct = (hs3['content-type'] || hs3['Content-Type'] || '').toLowerCase();
-      body = await resp3.text();
-    } catch {}
-  }
+  await browser.close();
 
-  // Gem sample (hjælper ved evt. videre tuning)
   try {
-    const samplePath = path.join(sampDir, 'stats_raw.txt');
-    fs.writeFileSync(samplePath, String(body).slice(0, 150_000));
+    fs.writeFileSync(path.join(sampDir, 'stats_raw.txt'), String(body).slice(0, 150_000));
   } catch {}
 
-  const players = body ? extractPlayersFromText(body) : [];
+  const debug = [
+    `foundPlayers=${players.length}`,
+    `usedUrl=${brugtUrl || '-'}`,
+    `status=${sidsteStatus}`,
+    `contentType=${sidsteCt || '-'}`,
+    `bodyLen=${body ? body.length : 0}`,
+    `ts=${new Date().toISOString()}`,
+    ``,
+    `Forsoeg:`,
+    ...forsog.map(f => '  ' + f),
+  ].join('\n');
+  fs.writeFileSync(debugPath, debug);
+
+  // VIGTIGT: overskriv ALDRIG latest.json med en tom liste.
+  // Ellers slettes den sidste gode scrape, og synkroniseringen faar intet at arbejde med.
+  if (players.length === 0) {
+    console.error('\nFEJL: ingen spillere fundet paa nogen adresse.');
+    console.error('latest.json er IKKE overskrevet - tidligere data er bevaret.');
+    console.error('Holdet.dk har sandsynligvis flyttet siden igen. Se data/debug_info.txt.');
+    fs.writeFileSync(path.join(dataDir, 'changed.flag'), '0');
+    process.exit(1);
+  }
 
   const payload = JSON.stringify(players, null, 2);
   let changed = true;
   if (fs.existsSync(latestPath)) {
-    const prev = fs.readFileSync(latestPath, 'utf8');
-    changed = prev !== payload;
+    changed = fs.readFileSync(latestPath, 'utf8') !== payload;
   }
   fs.writeFileSync(latestPath, payload);
-
-  const debug = [
-    `foundPlayers=${players.length}`,
-    `status=${status}`,
-    `contentType=${ct || '-'}`,
-    `bodyLen=${body ? body.length : 0}`,
-    `statsUrl=${STATS_URL}`,
-    `ts=${new Date().toISOString()}`
-  ].join('\n');
-  fs.writeFileSync(debugPath, debug);
   fs.writeFileSync(path.join(dataDir, 'changed.flag'), changed ? '1' : '0');
 
-  await browser.close();
+  const nz = players.filter(p => p.growth !== 0).length;
+  console.log(`\nOK: ${players.length} spillere (${nz} med vaerdi != 0) fra ${brugtUrl}`);
 }
 
 run().catch(err => {
@@ -157,7 +175,8 @@ run().catch(err => {
   try {
     const { dataDir } = ensureDataDirs();
     fs.writeFileSync(path.join(dataDir, 'changed.flag'), '0');
-    fs.writeFileSync(path.join(dataDir, 'debug_info.txt'), `ERROR=${String(err)}\nts=${new Date().toISOString()}`);
+    fs.writeFileSync(path.join(dataDir, 'debug_info.txt'),
+      `ERROR=${String(err)}\nts=${new Date().toISOString()}`);
   } catch {}
   process.exit(1);
 });
