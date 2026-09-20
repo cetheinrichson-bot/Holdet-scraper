@@ -2,8 +2,8 @@ foundPlayers=426
 usedUrl=https://www.holdet.dk/da/season/super-manager-fall-2026/soccer/statistics
 status=200
 contentType=text/html; charset=utf-8
-bodyLen=542259
-ts=2026-09-20T08:04:28.683Z
+bodyLen=545580
+ts=2026-09-20T13:19:57.202Z
 
 Forsoeg:
-  https://www.holdet.dk/da/season/super-manager-fall-2026/soccer/statistics [*/*] -> status=200 bytes=542259 spillere=426
+  https://www.holdet.dk/da/season/super-manager-fall-2026/soccer/statistics [*/*] -> status=200 bytes=545580 spillere=426
