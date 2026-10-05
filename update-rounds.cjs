@@ -10,7 +10,7 @@ admin.initializeApp({
 });
 const db = admin.database();
 
-// r1-r14 = officielle kamptider. r15-r17 = skoen (fre 19 - man 21).
+// ALLE 17 runder har nu officielle kamptider fra Divisionsforeningen.
 // r6 rummer de udskudte kampe 2.+3. sep.
 const rounds = {
   r1: { label:"Runde 1", start:"2026-07-24T19:00:00+02:00", end:"2026-07-27T21:00:00+02:00", waiverEnd:"2026-07-28T09:00:00+02:00" },
@@ -29,7 +29,7 @@ const rounds = {
   r14: { label:"Runde 14", start:"2026-11-06T19:00:00+01:00", end:"2026-11-08T20:00:00+01:00", waiverEnd:"2026-11-09T09:00:00+01:00" },
   r15: { label:"Runde 15", start:"2026-11-20T19:00:00+01:00", end:"2026-11-23T21:00:00+01:00", waiverEnd:"2026-11-24T09:00:00+01:00" },
   r16: { label:"Runde 16", start:"2026-11-27T19:00:00+01:00", end:"2026-11-30T21:00:00+01:00", waiverEnd:"2026-12-01T09:00:00+01:00" },
-  r17: { label:"Runde 17", start:"2026-12-04T19:00:00+01:00", end:"2026-12-07T21:00:00+01:00", waiverEnd:"2026-12-08T09:00:00+01:00" },
+  r17: { label:"Runde 17", start:"2026-12-05T17:00:00+01:00", end:"2026-12-07T21:00:00+01:00", waiverEnd:"2026-12-08T09:00:00+01:00" },
 };
 
 async function run() {

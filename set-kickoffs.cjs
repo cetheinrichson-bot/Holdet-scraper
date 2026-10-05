@@ -1,7 +1,7 @@
 /**
  * set-kickoffs.cjs
  * Opretter clubKickoffs - laaser spillere naar klubbens kamp er startet.
- * r1-r14 = officielle tider. r15-r17 = skoen indtil de offentliggoeres.
+ * ALLE 17 runder har officielle kamptider.
  */
 
 const admin = require("firebase-admin");
@@ -147,18 +147,32 @@ const SCHEDULE = {
     ["2026-11-08T14:00:00","agf","horsens"],
     ["2026-11-08T16:00:00","randers","nordsjalland"],
     ["2026-11-08T18:00:00","midtjylland","sonderjyske"],
-  ]
+  ],
+  r15: [
+    ["2026-11-20T19:00:00","agf","lyngby"],
+    ["2026-11-22T14:00:00","viborg","randers"],
+    ["2026-11-22T14:00:00","horsens","silkeborg"],
+    ["2026-11-22T16:00:00","sonderjyske","ob"],
+    ["2026-11-22T18:00:00","nordsjalland","kobenhavn"],
+    ["2026-11-23T19:00:00","brondby","midtjylland"],
+  ],
+  r16: [
+    ["2026-11-27T19:00:00","sonderjyske","brondby"],
+    ["2026-11-29T14:00:00","randers","horsens"],
+    ["2026-11-29T14:00:00","lyngby","viborg"],
+    ["2026-11-29T16:00:00","kobenhavn","midtjylland"],
+    ["2026-11-29T18:00:00","silkeborg","agf"],
+    ["2026-11-30T19:00:00","ob","nordsjalland"],
+  ],
+  r17: [
+    ["2026-12-05T17:00:00","agf","randers"],
+    ["2026-12-06T14:00:00","midtjylland","silkeborg"],
+    ["2026-12-06T14:00:00","nordsjalland","lyngby"],
+    ["2026-12-06T16:00:00","brondby","ob"],
+    ["2026-12-06T18:00:00","horsens","kobenhavn"],
+    ["2026-12-07T19:00:00","viborg","sonderjyske"],
+  ],
 };
-
-// r15-r17: skoen (loerdag kl 16) indtil officielle tider kendes
-const SAT = { r15:"2026-11-21", r16:"2026-11-28", r17:"2026-12-05" };
-const ALL = Object.keys(KEYS);
-for (const [rk, date] of Object.entries(SAT)) {
-  SCHEDULE[rk] = [];
-  for (let i = 0; i < ALL.length; i += 2) {
-    SCHEDULE[rk].push([date + "T16:00:00", ALL[i], ALL[i+1]]);
-  }
-}
 
 function keyFor(name) {
   return "club_" + name.replace(/[^a-zA-Z0-9\u00e6\u00f8\u00e5\u00c6\u00d8\u00c5]/g, "_");
@@ -198,7 +212,7 @@ async function run() {
   await db.ref().update(updates);
   console.log("Skrev " + total + " kickoff-tidspunkter\n");
 
-  for (const rk of ["r10", "r14"]) {
+  for (const rk of ["r15", "r16", "r17"]) {
     console.log("Runde " + rk.slice(1) + ":");
     Object.entries(updates)
       .filter(([k]) => k.startsWith("clubKickoffs/" + rk + "/"))
